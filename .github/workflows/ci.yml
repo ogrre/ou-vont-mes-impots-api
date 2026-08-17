@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   tests:
-    name: Tests
+    name: Tests and static analysis
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -44,12 +44,13 @@ jobs:
         run: composer audit --locked
       - name: Check code style
         run: vendor/bin/pint --test
+      - name: Run static analysis
+        run: composer analyse
       - name: Run test suite
         run: php artisan test
 
   mutation-testing:
     name: Mutation testing
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: tests
     runs-on: ubuntu-latest
     timeout-minutes: 30

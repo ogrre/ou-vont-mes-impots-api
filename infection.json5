@@ -22,7 +22,15 @@
         "CastArray": false,
         "CastBool": false,
         "CastInt": false,
-        "CastString": false
+        "CastString": false,
+        // Le montant est en centimes (deux décimales) : le multiplier par
+        // 100 donne un entier, donc changer l'échelle de bcmul est équivalent.
+        "DecrementInteger": {
+            "ignore": ["App\\Services\\Api\\HomePagePresenter::ratioItems"]
+        },
+        "IncrementInteger": {
+            "ignore": ["App\\Services\\Api\\HomePagePresenter::ratioItems"]
+        }
     },
     "logs": {
         "text": "storage/logs/infection.log",

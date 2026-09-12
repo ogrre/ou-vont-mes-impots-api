@@ -70,7 +70,9 @@ class HomePagePresenter
     {
         return array_map(function (array $item) use ($denominator): array {
             $amount = $item['amount'] ?? null;
-            $ratio = $amount === null || $denominator === null || $denominator === '0.00' ? null : bcmul(bcdiv((string) $amount, $denominator, 8), '100', 2);
+            // Compute the percentage directly at its displayed precision,
+            // avoiding an unnecessary intermediate division and truncation.
+            $ratio = $amount === null || $denominator === null || $denominator === '0.00' ? null : bcdiv(bcmul((string) $amount, '100', 2), $denominator, 2);
             $item['percentage'] = $ratio;
             $item['per_100'] = $ratio;
 

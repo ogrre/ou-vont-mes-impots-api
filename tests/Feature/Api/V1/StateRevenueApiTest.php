@@ -3,9 +3,12 @@
 namespace Tests\Feature\Api\V1;
 
 use App\Models\DatasetFile;
+use App\Models\FinancialObservation;
 use App\Services\Imports\StateBudgetRevenueXlsxImporter;
 use Database\Seeders\DatabaseSeeder;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class StateRevenueApiTest extends TestCase
@@ -22,7 +25,21 @@ class StateRevenueApiTest extends TestCase
     {
         $this->importRevenue();
 
-        $this->getJson('/api/v1/state-revenue')
+        $accountingScopeQueries = 0;
+        DB::listen(static function (QueryExecuted $query) use (&$accountingScopeQueries): void {
+            if (str_contains(strtolower($query->sql), 'accounting_scopes')) {
+                $accountingScopeQueries++;
+            }
+        });
+
+        FinancialObservation::preventLazyLoading();
+        try {
+            $response = $this->getJson('/api/v1/state-revenue');
+        } finally {
+            FinancialObservation::preventLazyLoading(false);
+        }
+
+        $response
             ->assertOk()
             ->assertJsonPath('period', 2025)
             ->assertJsonPath('scope.code', 'french_state_budget')
@@ -36,9 +53,26 @@ class StateRevenueApiTest extends TestCase
             ->assertJsonPath('items.0.label', 'Recettes fiscales brutes')
             ->assertJsonPath('items.0.amount', '495065000000.00')
             ->assertJsonPath('items.0.is_aggregate', true)
+            ->assertJsonPath('items.0.is_deduction', false)
+            ->assertJsonPath('items.0.level', null)
+            ->assertJsonPath('items.0.parent_code', null)
+            ->assertJsonPath('items.0.breadcrumb.0', 'Recettes fiscales brutes')
             ->assertJsonPath('items.11.label', 'À déduire : Remboursements et dégrèvements')
             ->assertJsonPath('items.11.is_deduction', true)
+            ->assertJsonPath('items.11.is_aggregate', false)
+            ->assertJsonPath('items.11.source_row_number', 15)
             ->assertJsonPath('source.file.descriptor', 'state-general-budget-revenue-2025-2026');
+
+        $response->assertJsonStructure(['scope' => ['label'], 'items' => [['slug']]]);
+
+        $items = $response->json('items');
+        $this->assertArrayHasKey('code', $items[0]);
+        $this->assertArrayHasKey('parent_code', $items[0]);
+        $this->assertNull($items[0]['code']);
+        foreach ($items as $item) {
+            $this->assertSame($item['label'], end($item['breadcrumb']));
+        }
+        $this->assertSame(2, $accountingScopeQueries, 'Une requête filtre par scope et une seule précharge la relation des observations.');
     }
 
     public function test_it_filters_initial_estimates_and_the_2026_budget_bill(): void
@@ -56,7 +90,7 @@ class StateRevenueApiTest extends TestCase
 
     public function test_it_validates_filters_returns_not_found_and_is_read_only(): void
     {
-        $this->getJson('/api/v1/state-revenue?year=2200&status=executed')
+        $this->getJson('/api/v1/state-revenue?year=2200&status=invalid_status')
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['year', 'status']);
 
@@ -72,7 +106,7 @@ class StateRevenueApiTest extends TestCase
         $file = DatasetFile::where('slug', 'state-general-budget-revenue-2025-2026')->firstOrFail();
         app(StateBudgetRevenueXlsxImporter::class)->import(
             $file,
-            base_path('data/econ-fin-pub-recettes-budget.xlsx'),
+            base_path('data/2025/budget-etat/econ-fin-pub-recettes-budget.xlsx'),
         );
     }
 }

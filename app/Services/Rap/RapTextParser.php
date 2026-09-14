@@ -78,7 +78,7 @@ class RapTextParser
 
         $actions = [];
         $table = substr($text, (int) $header[0][1]);
-        $table = explode("\f", $table)[0] ?? $table;
+        $table = explode("\f", $table)[0];
         foreach (preg_split('/\R/u', $table) ?: [] as $line) {
             $line = trim($line);
             if ($line === '' || preg_match('/^(?:Intitulé|Total|Dotation|Crédits|Dépenses)/iu', $line)) {

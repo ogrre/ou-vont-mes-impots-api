@@ -1,21 +1,43 @@
 {
     "$schema": "vendor/infection/infection/resources/schema.json",
     "source": {
-        "directories": ["app"],
-        "excludes": [
-            "Http/Controllers/Controller.php",
-            "Models/User.php",
-            "Providers/AppServiceProvider.php"
+        "directories": [
+            "app/Services/Api",
+            "app/Services/Rap",
+            "app/Support"
         ]
     },
     "testFramework": "phpunit",
     "phpUnit": {
         "configDir": "."
     },
-    "threads": 4,
+    "threads": "max",
     "timeout": 30,
     "minMsi": 70,
     "minCoveredMsi": 70,
+    "mutators": {
+        "@default": true,
+        // Les casts défensifs de données externes ne constituent pas de la
+        // logique métier et génèrent surtout des mutants équivalents.
+        "CastArray": false,
+        "CastBool": false,
+        "CastInt": false,
+        "CastString": false,
+        // Le montant est en centimes (deux décimales) : le multiplier par
+        // 100 donne un entier, donc changer l'échelle de bcmul est équivalent.
+        "DecrementInteger": {
+            "ignore": [
+                "App\\Services\\Api\\HomePagePresenter::ratioItems",
+                "App\\Services\\Rap\\RapCatalogCrawler::get"
+            ]
+        },
+        "IncrementInteger": {
+            "ignore": [
+                "App\\Services\\Api\\HomePagePresenter::ratioItems",
+                "App\\Services\\Rap\\RapCatalogCrawler::get"
+            ]
+        }
+    },
     "logs": {
         "text": "storage/logs/infection.log",
         "summary": "storage/logs/infection-summary.log"

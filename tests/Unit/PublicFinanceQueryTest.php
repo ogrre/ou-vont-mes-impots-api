@@ -62,6 +62,57 @@ class PublicFinanceQueryTest extends TestCase
         $this->assertSame([], $result['quality']['excluded_items']);
     }
 
+    public function test_it_preserves_distribution_and_observation_metadata_and_handles_zero_denominators(): void
+    {
+        $query = app(PublicFinanceQuery::class);
+        $source = new Source(['name' => 'Source', 'homepage_url' => 'https://example.test']);
+        $dataset = new Dataset(['slug' => 'dataset']);
+        $dataset->setRelation('source', $source);
+        $item = new ClassificationItem(['code' => 'GF01', 'official_label' => '  Fonction 1  ']);
+        $row = new FinancialObservation(['amount' => '25.00', 'year' => 2024, 'metadata' => ['source_page' => 4, 'raw_label' => 'Libellé brut']]);
+        $row->setRelation('classificationItem', $item);
+        $row->setRelation('dataset', $dataset);
+
+        $invoke = $this->invoker($query);
+        $distribution = $invoke('distributionBlock', 2024, 'scope', 'basis', 'measure', 'stage', 'consolidated', new Collection([$row]), '0.00');
+
+        $this->assertSame([
+            'year' => 2024,
+            'scope' => 'scope',
+            'accounting_basis' => 'basis',
+            'measurement_type' => 'measure',
+            'stage' => 'stage',
+            'consolidation' => 'consolidated',
+            'amount' => '0.00',
+            'denominator' => '0.00',
+            'items' => [[
+                'code' => 'GF01', 'label' => '  Fonction 1  ', 'amount' => '25.00', 'percent' => null,
+                'per_100' => null, 'quality_status' => 'validated',
+                'provenance' => [
+                    'dataset' => 'dataset', 'source' => 'Source', 'source_url' => 'https://example.test',
+                    'source_page' => 4, 'raw_label' => 'Libellé brut',
+                ],
+            ]],
+            'quality' => [
+                'status' => 'validated', 'coverage_percent' => '100.00', 'included_amount' => '0.00',
+                'excluded_amount' => null, 'excluded_items' => [],
+            ],
+        ], $distribution);
+
+        $this->assertSame('  Fonction 1  ', $invoke('labelRow', new Collection([$row]), 'Fonction 1')?->classificationItem->official_label);
+        $this->assertSame([
+            'amount' => '25.00', 'unit' => 'EUR', 'year' => 2024, 'dataset' => 'dataset',
+            'source' => 'Source', 'source_page' => 4,
+        ], $invoke('amountBlock', $row));
+        $this->assertSame([
+            'dataset' => 'dataset', 'source' => 'Source', 'source_url' => 'https://example.test',
+            'source_page' => 4, 'raw_label' => 'Libellé brut',
+        ], $invoke('overviewProvenance', $row));
+        $this->assertSame([
+            'amount' => null, 'unit' => 'EUR', 'year' => null, 'dataset' => null, 'source' => null, 'source_page' => null,
+        ], $invoke('amountBlock', null));
+    }
+
     public function test_it_resolves_explicit_and_implicit_hierarchy_levels(): void
     {
         $query = app(PublicFinanceQuery::class);

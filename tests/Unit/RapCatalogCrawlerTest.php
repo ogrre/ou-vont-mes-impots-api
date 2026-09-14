@@ -21,9 +21,13 @@ class RapCatalogCrawlerTest extends TestCase
         $entries = app(RapCatalogCrawler::class)->discover();
 
         $this->assertSame(['101', '102'], array_column($entries, 'program'));
+        $this->assertSame([0, 1], array_keys($entries));
         $this->assertSame('https://www.budget.gouv.fr/documentation/file-download/1', $entries[0]['url']);
         $this->assertSame("Accès et retour à l'emploi", $entries[1]['name']);
-        Http::assertSent(fn ($request): bool => str_contains($request->url(), 'docuement_dossier%5B0%5D=typologie%3A115') && str_contains($request->url(), 'page=0'));
+        Http::assertSent(fn ($request): bool => str_starts_with($request->url(), RapCatalogCrawler::PAGE_URL.'?')
+            && str_contains($request->url(), 'docuement_dossier%5B0%5D=typologie%3A115')
+            && str_contains($request->url(), 'page=0')
+            && $request->hasHeader('Accept', 'text/html,application/xhtml+xml'));
     }
 
     public function test_it_replaces_duplicate_programs_and_stops_after_an_empty_page(): void
@@ -55,6 +59,21 @@ class RapCatalogCrawlerTest extends TestCase
         app(RapCatalogCrawler::class)->discover();
     }
 
+    public function test_it_continues_past_irrelevant_and_malformed_links_on_the_same_page(): void
+    {
+        $deep = static fn (string $html): string => str_repeat('<div>', 7).$html.str_repeat('</div>', 7);
+        Http::fake(['*' => Http::sequence()
+            ->push($deep('<a href="/outside.pdf">Télécharger PDF</a>')
+                .$deep('<article>RAP sans code <a href="/bad.pdf">Télécharger PDF</a></article>')
+                .'<article>RAP 2024 103 - Résultat <a href="/good.pdf">Télécharger PDF</a></article>')
+            ->push('<html></html>')]);
+
+        $entries = app(RapCatalogCrawler::class)->discover();
+
+        $this->assertCount(1, $entries);
+        $this->assertSame('103', $entries[0]['program']);
+    }
+
     public function test_it_raises_an_error_when_the_catalog_request_fails(): void
     {
         Http::fake(['*' => Http::response('', 503)]);
@@ -77,6 +96,20 @@ class RapCatalogCrawlerTest extends TestCase
         Http::assertSent(fn ($request): bool => str_contains($request->url(), 'page=1'));
     }
 
+    public function test_it_does_not_stop_when_the_first_catalog_page_is_empty(): void
+    {
+        Http::fake(['*' => Http::sequence()
+            ->push('<html></html>')
+            ->push('<article>RAP 2024 101 - Programme après une page vide <a href="/test.pdf">Télécharger PDF</a></article>')
+            ->push('<html></html>')]);
+
+        $entries = app(RapCatalogCrawler::class)->discover();
+
+        $this->assertSame(['101'], array_column($entries, 'program'));
+        $this->assertSame(1, $entries[0]['page']);
+        Http::assertSentCount(3);
+    }
+
     public function test_it_accepts_accented_context_and_absolute_urls(): void
     {
         Http::fake(['*' => Http::sequence()
@@ -89,6 +122,22 @@ class RapCatalogCrawlerTest extends TestCase
         $this->assertSame('HTTP://example.test/report.pdf', $entries[0]['url']);
     }
 
+    public function test_it_finds_a_rap_context_seven_dom_levels_up_and_matches_case_insensitively(): void
+    {
+        $anchor = '<a href="/deep.pdf">TÉLÉCHARGER le PDF</a>';
+        for ($level = 0; $level < 5; $level++) {
+            $anchor = '<div>'.$anchor.'</div>';
+        }
+        $html = '<article>rap 2024 101 - Libellé en profondeur '.$anchor.'</article>';
+        Http::fake(['*' => Http::sequence()->push($html)->push('<html></html>')]);
+
+        $entries = app(RapCatalogCrawler::class)->discover();
+
+        $this->assertSame('101', $entries[0]['program']);
+        $this->assertSame('Libellé en profondeur', $entries[0]['name']);
+        $this->assertSame('https://www.budget.gouv.fr/deep.pdf', $entries[0]['url']);
+    }
+
     public function test_it_normalizes_context_and_resolves_relative_urls(): void
     {
         $crawler = app(RapCatalogCrawler::class);
@@ -99,10 +148,56 @@ class RapCatalogCrawlerTest extends TestCase
             return $reflection->invoke($crawler, ...$arguments);
         };
 
-        $this->assertSame('RAP 2024 A 101 - Test', $invoke('normalizeContext', 'RAP2024A101 - Test'));
+        $this->assertSame('RAP 2024 A 101 - Test', $invoke('normalizeContext', "  RAP2024A101 - Test \n"));
         $this->assertSame('https://example.test/a.pdf', $invoke('absoluteUrl', 'https://example.test/a.pdf'));
         $this->assertSame('https://www.budget.gouv.fr/a.pdf', $invoke('absoluteUrl', '/a.pdf'));
         $this->assertSame('https://www.budget.gouv.fr/a.pdf', $invoke('absoluteUrl', 'a.pdf'));
+        $this->assertSame('https://www.budget.gouv.fr/xhttps://example.test/a.pdf', $invoke('absoluteUrl', 'xhttps://example.test/a.pdf'));
+    }
+
+    public function test_it_limits_context_search_to_seven_dom_nodes_and_returns_a_list(): void
+    {
+        $crawler = app(RapCatalogCrawler::class);
+        $parsePage = new \ReflectionMethod($crawler, 'parsePage');
+        $anchor = '<a href="/too-deep.pdf">Télécharger PDF</a>';
+        for ($level = 0; $level < 6; $level++) {
+            $anchor = '<div>'.$anchor.'</div>';
+        }
+        $tooDeep = $parsePage->invoke($crawler, '<article>RAP 2024 101 - Trop profond '.$anchor.'</article>', 0);
+        $this->assertSame([], $tooDeep);
+
+        $duplicates = $parsePage->invoke($crawler, '<article>RAP 2024 101 - Première version <a href="/one.pdf">Télécharger PDF</a></article><article>RAP 2024 101 - Version finale <a href="/two.pdf">Télécharger PDF</a></article>', 0);
+        $this->assertSame([0], array_keys($duplicates));
+        $this->assertCount(1, $duplicates);
+        $this->assertSame('Version finale', $duplicates[0]['name']);
+        $this->assertSame('https://www.budget.gouv.fr/two.pdf', $duplicates[0]['url']);
+    }
+
+    public function test_it_clears_parse_errors_and_restores_libxml_error_mode(): void
+    {
+        $crawler = app(RapCatalogCrawler::class);
+        $parsePage = new \ReflectionMethod($crawler, 'parsePage');
+        $originalMode = libxml_use_internal_errors();
+        libxml_clear_errors();
+        libxml_use_internal_errors(true);
+
+        try {
+            $malformed = new \DOMDocument;
+            @$malformed->loadXML('<root><broken></root>');
+            $this->assertNotEmpty(libxml_get_errors());
+
+            $parsePage->invoke($crawler, '<html><body><p>Valid HTML</p></body></html>', 0);
+
+            $this->assertTrue(libxml_use_internal_errors());
+            $this->assertSame([], libxml_get_errors());
+
+            libxml_use_internal_errors(false);
+            $parsePage->invoke($crawler, '<html><body><p>Mode restauration</p></body></html>', 0);
+            $this->assertFalse(libxml_use_internal_errors());
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($originalMode);
+        }
     }
 
     public function test_it_honours_the_fifty_page_safety_limit(): void

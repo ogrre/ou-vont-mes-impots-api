@@ -95,6 +95,25 @@ class PublicFinanceApiTest extends TestCase
             ->assertJsonPath('public_finances.dataset', 'insee-t-3201')
             ->assertJsonPath('public_finances.source', 'INSEE')
             ->assertJsonPath('methodology.separation_rule', 'Les comptes nationaux et la comptabilité budgétaire sont exposés séparément et ne sont jamais additionnés.');
+
+        $this->assertSame([
+            'national_accounts' => 'Comptes nationaux INSEE : administrations publiques consolidées.',
+            'budget_accounting' => 'Budget de l’État : crédits de paiement exécutés du PLRG/RAP.',
+            'separation_rule' => 'Les comptes nationaux et la comptabilité budgétaire sont exposés séparément et ne sont jamais additionnés.',
+        ], $response->json('methodology'));
+        $this->assertSame([
+            'scope', 'accounting_basis', 'measurement_type', 'stage', 'consolidation', 'year', 'amount',
+            'expenditure', 'revenue', 'balance', 'dataset', 'source', 'quality',
+        ], array_keys($response->json('public_finances')));
+        foreach (['expenditure', 'revenue', 'balance'] as $key) {
+            $this->assertSame(['amount', 'unit', 'year', 'dataset', 'source', 'source_page'], array_keys($response->json("public_finances.{$key}")));
+        }
+        $this->assertSame([
+            'scope', 'basis', 'measurement', 'stage', 'consolidation', 'dataset', 'source', 'quality',
+            'accounting_basis', 'measurement_type', 'year', 'amount', 'items', 'denominator',
+        ], array_keys($response->json('state_budget')));
+        $this->assertArrayHasKey('public_revenues', $response->json('revenues'));
+        $this->assertArrayHasKey('state_budget_revenues', $response->json('revenues'));
     }
 
     public function test_overview_exposes_imported_cofog_and_budget_revenues_without_merging_accounting_bases(): void
@@ -110,6 +129,37 @@ class PublicFinanceApiTest extends TestCase
             ->assertJsonPath('revenues.state_budget_revenues.accounting_basis', 'budgetary')
             ->assertJsonPath('revenues.state_budget_revenues.stage', 'execution')
             ->assertJsonPath('revenues.state_budget_revenues.quality.status', 'validated');
+    }
+
+    public function test_overview_builds_the_institutional_distribution_from_all_three_sector_datasets(): void
+    {
+        $this->seed(DatabaseSeeder::class);
+        foreach ([
+            'insee-t-3201' => 'T_3201_fr.xlsx',
+            'insee-t-3202' => 'T_3202_fr.xlsx',
+            'insee-t-3205' => 'T_3205_fr.xlsx',
+            'insee-t-3212' => 'T_3212_fr.xlsx',
+        ] as $slug => $filename) {
+            app(InseePublicAccountsXlsxImporter::class)->import(
+                DatasetFile::where('slug', $slug)->firstOrFail(),
+                base_path('data/series-historiques/insee/'.$filename),
+            );
+        }
+
+        $payload = $this->getJson('/api/v1/overview/2024')->assertOk()->json();
+
+        $this->assertSame(
+            ['central_government', 'local_government', 'social_security'],
+            array_column($payload['institutional_distribution']['items'], 'code'),
+        );
+        $this->assertSame('review_required', $payload['institutional_distribution']['quality']['status']);
+        $this->assertSame('1672589200000.00', $payload['institutional_distribution']['denominator']);
+        foreach ($payload['institutional_distribution']['items'] as $item) {
+            $this->assertSame(2024, $item['year']);
+            $this->assertSame('review_required', $item['quality_status']);
+            $this->assertSame('INSEE', $item['provenance']['source']);
+            $this->assertNotEmpty($item['amount']);
+        }
     }
 
     public function test_home_contract_exposes_stable_frontend_blocks_and_global_metadata(): void

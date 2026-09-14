@@ -56,13 +56,13 @@ class RapCatalogCrawler
             if (! $anchor instanceof \DOMElement) {
                 continue;
             }
-            $label = trim(preg_replace('/\s+/u', ' ', $anchor->textContent) ?? '');
+            $label = preg_replace('/\s+/u', ' ', $anchor->textContent) ?? '';
             if (! preg_match('/t[ée]l[ée]charger.*\bpdf\b/iu', $label)) {
                 continue;
             }
 
             $context = $this->context($anchor);
-            if (! preg_match('/\bRAP\b/iu', $context)) {
+            if (! preg_match('/\bRAP\b/i', $context)) {
                 continue;
             }
 
@@ -73,7 +73,7 @@ class RapCatalogCrawler
             $url = $this->absoluteUrl($anchor->getAttribute('href'));
             $entries[$match[1]] = [
                 'program' => $match[1],
-                'name' => trim($match[2]),
+                'name' => $match[2],
                 'url' => $url,
                 'page' => $page,
             ];
@@ -87,7 +87,7 @@ class RapCatalogCrawler
         $node = $anchor;
         for ($i = 0; $i < 7 && $node instanceof \DOMElement; $i++, $node = $node->parentNode) {
             $text = $this->normalizeContext($node->textContent);
-            if (preg_match('/\bRAP\b.*\b\d{3}\s*[-–—]/iu', $text)) {
+            if (preg_match('/\bRAP\b.*\b\d{3}\s*[-–—]/i', $text)) {
                 return $text;
             }
         }

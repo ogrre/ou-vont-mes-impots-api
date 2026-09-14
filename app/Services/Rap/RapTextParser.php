@@ -25,10 +25,15 @@ class RapTextParser
         $end = preg_match('/2023\s*\/\s*PR[ÉE]SENTATION PAR ACTION/iu', $section, $match, PREG_OFFSET_CAPTURE)
             ? (int) $match[0][1]
             : strlen($section);
-        $section = substr($section, 0, $end);
-        $parts = preg_split('/2024\s*\/\s*CR[ÉE]DITS DE PAIEMENT/iu', $section, 2) ?: [$section];
-        $ae = $this->parseRows($parts[0]);
-        $cp = $this->parseRows($parts[1] ?? '');
+        $section = substr_replace($section, '', $end);
+        $cpOffset = preg_match('/2024\s*\/\s*CR[ÉE]DITS DE PAIEMENT/iu', $section, $cpHeader, PREG_OFFSET_CAPTURE)
+            ? (int) $cpHeader[0][1]
+            : null;
+        $aeSection = $cpOffset === null ? $section : substr($section, 0, $cpOffset);
+        $cpSection = $cpOffset === null ? '' : substr($section, $cpOffset);
+        $cpSection = preg_replace('/^2024\s*\/\s*CR[ÉE]DITS DE PAIEMENT\R?/iu', '', $cpSection) ?? '';
+        $ae = $this->parseRows($aeSection);
+        $cp = $this->parseRows($cpSection);
         $byCode = [];
         foreach ($ae as $action) {
             $byCode[$action['code']] = $action;
@@ -50,7 +55,6 @@ class RapTextParser
             'program' => ['code' => $program, 'name' => $programName],
             'actions' => $actions,
             'parser' => ['anchor' => '2024 / PRÉSENTATION PAR ACTION ET TITRE DES CRÉDITS', 'amount_mapping' => 'layout-column-order-v1'],
-            'review_required' => false,
             'warnings' => [],
         ];
         $result['validation'] = $this->validateTotals($section, $actions);
@@ -74,7 +78,7 @@ class RapTextParser
 
         $actions = [];
         $table = substr($text, (int) $header[0][1]);
-        $table = preg_split('/\f/u', $table, 2)[0] ?? $table;
+        $table = explode("\f", $table)[0] ?? $table;
         foreach (preg_split('/\R/u', $table) ?: [] as $line) {
             $line = trim($line);
             if ($line === '' || preg_match('/^(?:Intitulé|Total|Dotation|Crédits|Dépenses)/iu', $line)) {
@@ -85,13 +89,13 @@ class RapTextParser
             if (count($numbers) < 3) {
                 continue;
             }
-            $label = trim((string) preg_replace('/\s+(?:\d{1,3}(?:[ \x{00a0}]\d{3})+|\d+).*$/u', '', $line));
+            $label = (string) preg_replace('/\s+(?:\d{1,3}(?:[ \x{00a0}]\d{3})+|\d+).*$/u', '', $line);
             if ($label === '') {
                 continue;
             }
             $last = count($numbers) >= 4
                 ? [$numbers[0], $numbers[2], $numbers[3]]
-                : array_slice($numbers, -3);
+                : $numbers;
             $actions[] = [
                 'code' => (string) (count($actions) + 1),
                 'label' => $label,
@@ -131,14 +135,14 @@ class RapTextParser
         $numberLines = [];
         foreach ($lines as $line) {
             $line = trim($line);
-            if ($current !== null && preg_match('/^(?:Total des|Ouvertures?\s*\/\s*annulations|202[34]\s*\/)/iu', $line)) {
+            if ($current !== null && preg_match('/^(?:Total des|Ouvertures?\s*\/\s*annulations|202[34]\s*\/)/i', $line)) {
                 $actions[] = $this->finish($current, $numberLines);
                 $current = null;
                 $numberLines = [];
 
                 continue;
             }
-            if (preg_match('/^(\d{1,3}(?:\.\d{1,3})?)\s*[–—-]\s*(.+)$/u', $line, $row)) {
+            if (preg_match('/^(\d{1,3}(?:\.\d{1,3})?)\s*[–—-]\s*(.+)/u', $line, $row)) {
                 if ($current !== null) {
                     $actions[] = $this->finish($current, $numberLines);
                 }
@@ -148,7 +152,10 @@ class RapTextParser
 
                 continue;
             }
-            if ($current !== null && $this->isAmountLine($line)) {
+            if ($current === null) {
+                continue;
+            }
+            if ($this->isAmountLine($line)) {
                 $numberLines[] = $line;
 
                 continue;
@@ -157,18 +164,16 @@ class RapTextParser
             // consumption amounts are printed after that remaining label.
             // Keep only the numeric suffix; otherwise the consumed row is
             // silently lost.
-            if ($current !== null) {
-                [, $columns] = $this->splitLabelColumns($line);
-                if ($columns !== null) {
-                    $numberLines[] = $columns;
-                }
+            [, $columns] = $this->splitLabelColumns($line);
+            if ($columns !== null) {
+                $numberLines[] = $columns;
             }
         }
         if ($current !== null) {
             $actions[] = $this->finish($current, $numberLines);
         }
 
-        return array_values(array_filter($actions, fn (array $action): bool => $action['amounts'] !== []));
+        return $actions;
     }
 
     /**
@@ -259,16 +264,15 @@ class RapTextParser
                 continue;
             }
             $position = mb_stripos($line, $label);
-            $inline = $position === false ? '' : trim(mb_substr($line, $position + mb_strlen($label)));
+            $inline = $position === false ? '' : mb_substr($line, $position + mb_strlen($label));
             if ($inline !== '') {
                 $columns = preg_split('/\s{2,}/u', $inline) ?: [];
-                $columns = array_values(array_filter($columns, fn (string $value): bool => (bool) preg_match('/^[+\-]?[\d\s.,]+$/u', trim($value))));
+                $columns = array_filter($columns, fn (string $value): bool => (bool) preg_match('/^[+\-]?[\d\s.,]+$/u', $value));
                 if ($columns !== []) {
                     return $this->amount((string) end($columns));
                 }
             }
-            for ($next = $index + 1; $next < min(count($lines), $index + 4); $next++) {
-                $value = trim($lines[$next]);
+            foreach (array_slice($lines, $index + 1, 3) as $value) {
                 if ($this->isAmountLine($value)) {
                     $columns = preg_split('/\s{2,}/u', $value) ?: [];
 
@@ -284,7 +288,7 @@ class RapTextParser
     {
         $value = str_replace([' ', "\u{00A0}", '.'], '', $value);
 
-        return (int) str_replace(',', '.', $value);
+        return (int) $value;
     }
 
     /** @return array<int,int> */

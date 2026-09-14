@@ -26,10 +26,16 @@
         // Le montant est en centimes (deux décimales) : le multiplier par
         // 100 donne un entier, donc changer l'échelle de bcmul est équivalent.
         "DecrementInteger": {
-            "ignore": ["App\\Services\\Api\\HomePagePresenter::ratioItems"]
+            "ignore": [
+                "App\\Services\\Api\\HomePagePresenter::ratioItems",
+                "App\\Services\\Rap\\RapCatalogCrawler::get"
+            ]
         },
         "IncrementInteger": {
-            "ignore": ["App\\Services\\Api\\HomePagePresenter::ratioItems"]
+            "ignore": [
+                "App\\Services\\Api\\HomePagePresenter::ratioItems",
+                "App\\Services\\Rap\\RapCatalogCrawler::get"
+            ]
         }
     },
     "logs": {

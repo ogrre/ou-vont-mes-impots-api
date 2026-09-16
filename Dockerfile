@@ -5,6 +5,7 @@ RUN apk add --no-cache \
         libxml2 \
         libzip \
         nginx \
+        poppler-utils \
         postgresql-libs \
         supervisor \
     && apk add --no-cache --virtual .build-deps \
@@ -41,7 +42,7 @@ ENV APP_ENV=production \
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10m --retries=3 \
     CMD curl --fail --silent http://127.0.0.1:8080/up > /dev/null || exit 1
 
 ENTRYPOINT ["production-entrypoint"]

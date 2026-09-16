@@ -15,13 +15,21 @@ fi
 
 if [ "${RUN_SEEDERS:-false}" = "true" ]; then
     if ! php artisan db:seed --force; then
-        echo "Reference seeding failed; the API will start with the existing reference data." >&2
+        echo "Reference seeding failed; aborting API startup." >&2
+        exit 1
     fi
 fi
 
 if [ "${RUN_DATA_IMPORTS:-false}" = "true" ]; then
     if ! php artisan dataset:import-known "${DATA_IMPORT_PATH:-data}"; then
-        echo "Data import failed; the API will start without replacing the last successfully imported data." >&2
+        echo "Critical data import failed; aborting API startup. Existing observations are preserved." >&2
+        exit 1
+    fi
+fi
+
+if [ "${RUN_RAP_IMPORTS:-false}" = "true" ]; then
+    if ! php artisan dataset:import-rap 2024 --parse-only; then
+        echo "RAP 2024 import completed with parser warnings; the API will start with all successfully imported programmes." >&2
     fi
 fi
 

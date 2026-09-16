@@ -6,13 +6,14 @@ séparément.
 
 ## Architecture
 
-- Dokploy construit le [`Dockerfile`](../Dockerfile) depuis la branche `main`.
+- Dokploy construit le [`Dockerfile`](../Dockerfile) depuis `main` en production et `dev` en staging.
+- Chaque application utilise son webhook GitHub `push` et filtre sa branche cible ; un merge déclenche donc le déploiement de cet environnement.
 - Le conteneur expose Nginx sur le port `8080` et exécute PHP-FPM 8.4.
 - Le contrôle de santé est disponible sur `GET /up`.
 - PostgreSQL doit être créé comme service distinct dans Dokploy et ne doit pas
   publier son port sur Internet.
-- Les fichiers importés ne sont pas inclus dans l’image. Les données officielles
-  sont chargées par les commandes Artisan documentées dans le README.
+- Les fichiers officiels pris en charge sont inclus dans l’image via les règles
+  de `.dockerignore` et importés au démarrage si `RUN_DATA_IMPORTS=true`.
 
 ## Création de l’application
 
@@ -70,6 +71,8 @@ SESSION_DRIVER=database
 
 RUN_MIGRATIONS=true
 RUN_SEEDERS=true
+RUN_DATA_IMPORTS=true
+DATA_IMPORT_PATH=data
 ```
 
 `APP_KEY`, `DB_PASSWORD` et les autres secrets doivent être créés directement
@@ -80,10 +83,10 @@ docker compose -f docker-compose-dev.yml exec app php artisan key:generate --sho
 ```
 
 `RUN_MIGRATIONS=true` applique les migrations au démarrage de l’unique réplique
-du MVP. Pour le premier déploiement, `RUN_SEEDERS=true` ajoute les petits
+du MVP. `RUN_SEEDERS=true` ajoute ou met à jour les petits
 référentiels et descripteurs d’import ; aucun montant financier officiel n’est
-inséré par ces seeders. Après ce premier déploiement, `RUN_SEEDERS` peut être
-remis à `false`.
+inséré par ces seeders. Les référentiels sont seedés à chaque déploiement pour enregistrer les nouveaux
+descripteurs avant les imports.
 
 Sur une future installation à plusieurs réplicas, les migrations devront être
 déplacées vers une tâche de déploiement unique.
@@ -108,9 +111,21 @@ existantes provoque une erreur explicite plutôt qu’un écrasement silencieux.
 Les formats différés ou insuffisamment documentés présents dans `data` ne sont
 pas importés.
 
-L’image de production embarque uniquement les six CSV PLRG et le classeur de
-recettes pris en charge. Les sources différées, notamment le PDF, le RAP,
-`donnée.csv` et CCAS/CIAS, restent exclues du contexte de construction Docker.
+L’image embarque les six CSV PLRG, le classeur de recettes, les fichiers INSEE
+2024 et historiques, COFOG 2024, les CSV d’exécution et de recettes de l’État
+2024, ainsi que les PDF RAP et leurs fichiers JSON disponibles. Les RAP ne sont
+pas importés par `dataset:import-known` ; leur traitement reste distinct.
+
+Les caches de configuration, routes et événements sont générés avant les
+migrations, le seed et les imports, exécutés dans cet ordre. Un échec du seed
+ou d’un import critique arrête le démarrage avec un code non nul. Un checksum
+déjà enregistré n’est ignoré que si son import est terminé avec succès ; un
+import échoué ou en cours bloque le démarrage sans lancer une nouvelle tentative.
+
+Conserver une seule réplique et une stratégie de mise à jour `stop-first` :
+`start-first` peut faire coexister deux conteneurs pendant un déploiement.
+Avec plusieurs réplicas, déplacer migrations, seed et imports dans un job
+unique et désactiver ces commandes dans les conteneurs API.
 
 La même opération peut être lancée manuellement :
 

@@ -2,7 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\ImportStatus;
 use App\Models\DatasetFile;
+use App\Models\ImportBatch;
 use App\Services\Imports\Exceptions\DuplicateImportException;
 use App\Services\Imports\InseeCofogXlsxImporter;
 use App\Services\Imports\InseePublicAccountsXlsxImporter;
@@ -44,7 +46,12 @@ class ImportKnownDatasets extends Command
             }
 
             try {
-                $importer = match ($descriptor->metadata['importer'] ?? null) {
+                $importerKey = $descriptor->metadata['importer'] ?? null;
+                if ($importerKey === null) {
+                    continue;
+                }
+
+                $importer = match ($importerKey) {
                     'state_expenditure_plrg' => $expenditureImporter,
                     'state_budget_revenue_xlsx' => $revenueImporter,
                     'insee_public_accounts_xlsx' => $inseeImporter,
@@ -56,6 +63,18 @@ class ImportKnownDatasets extends Command
                 $this->info("{$descriptor->slug} : import #{$batch->id} terminé ({$batch->rows_imported} observations).");
                 $imported++;
             } catch (DuplicateImportException) {
+                $checksum = hash_file('sha256', $path);
+                $existing = ImportBatch::query()
+                    ->where('dataset_file_id', $descriptor->id)
+                    ->where('checksum', $checksum)
+                    ->first();
+
+                if ($existing === null || $existing->status !== ImportStatus::Completed) {
+                    $this->error("{$descriptor->slug} : contenu déjà enregistré mais import non terminé avec succès ; intervention nécessaire.");
+
+                    return self::FAILURE;
+                }
+
                 $this->line("{$descriptor->slug} : contenu déjà importé, ignoré.");
                 $alreadyImported++;
             } catch (Throwable $exception) {

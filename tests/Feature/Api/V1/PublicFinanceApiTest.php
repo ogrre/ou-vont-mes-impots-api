@@ -5,6 +5,7 @@ namespace Tests\Feature\Api\V1;
 use App\Models\Classification;
 use App\Models\ClassificationItem;
 use App\Models\DatasetFile;
+use App\Models\FinancialObservation;
 use App\Services\Api\PublicFinanceQuery;
 use App\Services\Imports\InseeCofogXlsxImporter;
 use App\Services\Imports\InseePublicAccountsXlsxImporter;
@@ -130,7 +131,6 @@ class PublicFinanceApiTest extends TestCase
         $this->seed(DatabaseSeeder::class);
         app(InseeCofogXlsxImporter::class)->import(DatasetFile::where('slug', 'insee-t-3301')->firstOrFail(), base_path('data/2024/insee/T_3301.xlsx'));
         app(StateBudgetRevenueCsvImporter::class)->import(DatasetFile::where('slug', 'state-budget-revenue-execution-2024')->firstOrFail(), base_path('data/2024/budget-etat/fiscalite/Annexe1-Etat_Recettes.csv'));
-
         $this->getJson('/api/v1/overview/2024')->assertOk()
             ->assertJsonPath('functional_distribution.accounting_basis', 'national_accounts')
             ->assertJsonPath('functional_distribution.items.0.percent', '10.83')
@@ -138,6 +138,23 @@ class PublicFinanceApiTest extends TestCase
             ->assertJsonPath('revenues.state_budget_revenues.accounting_basis', 'budgetary')
             ->assertJsonPath('revenues.state_budget_revenues.stage', 'execution')
             ->assertJsonPath('revenues.state_budget_revenues.quality.status', 'validated');
+    }
+
+    public function test_state_revenue_csv_preserves_nullable_scope_and_hierarchy_semantics(): void
+    {
+        $this->seed(DatabaseSeeder::class);
+        app(StateBudgetRevenueCsvImporter::class)->import(DatasetFile::where('slug', 'state-budget-revenue-execution-2024')->firstOrFail(), base_path('data/2024/budget-etat/fiscalite/Annexe1-Etat_Recettes.csv'));
+        $firstObservation = FinancialObservation::query()->where('year', 2024)->where('status', 'executed')->firstOrFail();
+        $firstObservation->update(['metadata' => [...($firstObservation->metadata ?? []), 'is_deduction' => true]]);
+
+        $items = $this->getJson('/api/v1/state-revenue?year=2024&status=executed')->assertOk()->json('items');
+
+        $this->assertNull($this->getJson('/api/v1/state-revenue?year=2024&status=executed')->json('scope.budget_component'));
+        $this->assertNotEmpty(array_filter($items, fn (array $item): bool => ($item['level'] ?? null) === 0 && $item['is_aggregate'] === false));
+        $this->assertNotEmpty(array_filter($items, fn (array $item): bool => ($item['level'] ?? null) === 1 && $item['is_aggregate'] === false));
+        $this->assertNotEmpty(array_filter($items, fn (array $item): bool => ($item['level'] ?? null) === 2 && $item['is_aggregate'] === true));
+        $this->assertNotEmpty(array_filter($items, fn (array $item): bool => ($item['level'] ?? null) === 3 && $item['is_aggregate'] === true));
+        $this->assertNotEmpty(array_filter($items, fn (array $item): bool => $item['is_deduction'] === true));
     }
 
     public function test_overview_builds_the_institutional_distribution_from_all_three_sector_datasets(): void

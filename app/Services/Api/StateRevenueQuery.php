@@ -2,6 +2,7 @@
 
 namespace App\Services\Api;
 
+use App\Models\BudgetComponent;
 use App\Models\ClassificationItem;
 use App\Models\FinancialObservation;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -63,7 +64,7 @@ class StateRevenueQuery
             'scope' => [
                 'code' => $first->accountingScope->code,
                 'label' => $first->accountingScope->name,
-                'budget_component' => $first->budgetComponent?->code,
+                'budget_component' => $this->budgetComponentCode($first->budgetComponent),
             ],
             'status' => $status,
             'flow_type' => 'revenue',
@@ -79,8 +80,8 @@ class StateRevenueQuery
                 'parent_code' => $observation->classificationItem->parent?->code,
                 'breadcrumb' => $this->breadcrumb($observation->classificationItem),
                 'amount' => $observation->amount,
-                'is_aggregate' => ($observation->classificationItem->metadata['aggregation_role'] ?? null) === 'aggregate' || (($observation->classificationItem->metadata['csv_level'] ?? 0) >= 2),
-                'is_deduction' => (bool) ($observation->metadata['is_deduction'] ?? str_starts_with(mb_strtolower($observation->classificationItem->official_label), 'à déduire')),
+                'is_aggregate' => $this->isAggregate($observation->classificationItem),
+                'is_deduction' => $this->isDeduction($observation),
                 'source_row_number' => $observation->source_row_number,
             ])->all(),
             'source' => $this->provenance->present($first->dataset, $first->datasetFile, $first->importBatch),
@@ -113,5 +114,21 @@ class StateRevenueQuery
             str_contains($normalized, 'dividendes') => 'Cette catégorie correspond aux revenus versés à l’État au titre de ses participations et placements.',
             default => 'Cette ligne décrit une recette du budget de l’État dans le périmètre de la comptabilité budgétaire. Elle est fournie par le fichier d’exécution et ne doit pas être additionnée aux sous-totaux ou aux totaux affichés ailleurs.',
         };
+    }
+
+    private function budgetComponentCode(?BudgetComponent $component): ?string
+    {
+        return $component?->code;
+    }
+
+    private function isAggregate(ClassificationItem $item): bool
+    {
+        return ($item->metadata['aggregation_role'] ?? null) === 'aggregate'
+            || (($item->metadata['csv_level'] ?? 0) >= 2);
+    }
+
+    private function isDeduction(FinancialObservation $observation): bool
+    {
+        return (bool) ($observation->metadata['is_deduction'] ?? str_starts_with(mb_strtolower($observation->classificationItem->official_label), 'à déduire'));
     }
 }

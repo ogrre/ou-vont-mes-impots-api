@@ -56,6 +56,7 @@ jobs:
   mutation-testing:
     name: Mutation testing
     needs: tests
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 

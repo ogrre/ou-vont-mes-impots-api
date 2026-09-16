@@ -51,6 +51,7 @@ class StateRevenueApiTest extends TestCase
             ->assertJsonMissingPath('total')
             ->assertJsonCount(20, 'items')
             ->assertJsonPath('items.0.label', 'Recettes fiscales brutes')
+            ->assertJsonPath('items.0.description', 'Cette ligne décrit une recette du budget de l’État dans le périmètre de la comptabilité budgétaire. Elle est fournie par le fichier d’exécution et ne doit pas être additionnée aux sous-totaux ou aux totaux affichés ailleurs.')
             ->assertJsonPath('items.0.amount', '495065000000.00')
             ->assertJsonPath('items.0.is_aggregate', true)
             ->assertJsonPath('items.0.is_deduction', false)

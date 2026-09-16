@@ -75,6 +75,11 @@ class PublicFinanceController extends Controller
         return response()->json(['classification' => $classification, 'category' => $category, 'categories' => $parent ? $query->categories($classification, $parent['id']) : []]);
     }
 
+    public function cofogDetail(int $year, string $category, PublicFinanceQuery $query): JsonResponse
+    {
+        return response()->json($query->cofogDetail($year, $category));
+    }
+
     public function history(Request $request, PublicFinanceQuery $query): JsonResponse
     {
         $data = $request->validate(['metric' => ['required', 'in:expenditure,revenue,tax,social_contribution,deficit,debt'], 'classification' => ['nullable', 'string'], 'category' => ['nullable', 'string'], 'scope' => ['nullable', 'string'], 'accounting_basis' => ['nullable', 'in:national_accounts,budgetary'], 'from' => ['required', 'integer', 'min:1949', 'max:2200'], 'to' => ['required', 'integer', 'min:1949', 'max:2200', 'gte:from']]);

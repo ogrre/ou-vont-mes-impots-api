@@ -66,6 +66,15 @@ class PublicFinanceApiTest extends TestCase
         $this->getJson('/api/v1/search?q=a&limit=51')->assertUnprocessable()->assertJsonValidationErrors(['q', 'limit']);
     }
 
+    public function test_it_exposes_a_charged_cofog_detail(): void
+    {
+        $payload = ['year' => 2024, 'code' => 'GF10', 'label' => 'Protection sociale', 'description' => 'La protection sociale regroupe les retraites.', 'amount' => '693000000000.00', 'denominator' => '693000000000.00', 'items' => [['code' => 'GF101', 'label' => 'Maladie', 'description' => 'Les dépenses de maladie.', 'amount' => '250000000000.00', 'percent' => '36.07', 'quality_status' => 'validated']], 'quality' => ['status' => 'validated'], 'source' => 'INSEE', 'dataset' => 'insee-t-3301', 'accounting_basis' => 'national_accounts', 'scope' => 'general_government', 'measurement_type' => 'expenditure', 'stage' => 'execution', 'consolidation' => 'consolidated'];
+        $mock = $this->mock(PublicFinanceQuery::class);
+        $mock->shouldReceive('cofogDetail')->with(2024, 'GF10')->andReturn($payload);
+
+        $this->getJson('/api/v1/cofog/2024/GF10')->assertOk()->assertJsonPath('code', 'GF10')->assertJsonPath('label', 'Protection sociale')->assertJsonPath('description', 'La protection sociale regroupe les retraites.')->assertJsonPath('items.0.description', 'Les dépenses de maladie.')->assertJsonPath('items.0.amount', '250000000000.00');
+    }
+
     public function test_overview_keeps_national_accounts_and_state_budget_separate_and_reports_missing_2024_datasets(): void
     {
         $this->seed(DatabaseSeeder::class);

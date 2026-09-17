@@ -16,6 +16,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             FinancialReferenceSeeder::class,
+            EditorialExplanationSeeder::class,
             PlrgDatasetSeeder::class,
             StateRevenueDatasetSeeder::class,
             InseeDatasetSeeder::class,

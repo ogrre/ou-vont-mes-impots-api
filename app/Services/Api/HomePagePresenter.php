@@ -6,6 +6,8 @@ use App\Support\DecimalMoney;
 
 class HomePagePresenter
 {
+    public function __construct(private readonly EditorialExplanationCatalog $editorial) {}
+
     /** @param array<string,mixed> $overview
      * @return array<string,mixed>
      */
@@ -25,7 +27,7 @@ class HomePagePresenter
             'methodology_version' => '2024.1',
             'headline' => [
                 'title' => 'Où vont les dépenses publiques ?',
-                'description' => 'Une vue d’ensemble des finances publiques françaises et du budget de l’État.',
+                'description' => $this->editorial->text('api.home.headline', 'Une vue d’ensemble des finances publiques françaises et du budget de l’État.'),
                 'amount' => $spending['amount'] ?? null, 'unit' => 'EUR', 'items' => [],
                 'percentage' => null, 'per_100' => null,
                 'quality_status' => $overview['public_finances']['quality']['status'] ?? 'not_importable',
@@ -34,29 +36,33 @@ class HomePagePresenter
                 'provenance' => $this->provenance($overview['public_finances']),
             ],
             'public_spending' => $this->block(
-                'Dépenses publiques 2024', 'Total des dépenses de l’ensemble des administrations publiques.',
+                str_replace(':year', (string) $year, $this->editorial->text('api.home.public_spending.title', 'Dépenses publiques :year')),
+                $this->editorial->text('api.home.public_spending.description', 'Total des dépenses de l’ensemble des administrations publiques.'),
                 $spending['amount'] ?? null, [], $overview['public_finances']['quality'] ?? [],
-                'Comptes nationaux INSEE, périmètre consolidé des administrations publiques.', $this->provenance($overview['public_finances']),
+                $this->editorial->text('api.home.public_spending.methodology', 'Comptes nationaux INSEE, périmètre consolidé des administrations publiques.'), $this->provenance($overview['public_finances']),
             ),
             'who_spends' => $this->block(
-                'Qui dépense ?', 'Répartition des dépenses entre les principaux sous-secteurs des administrations publiques.',
+                $this->editorial->text('api.home.who_spends.title', 'Qui dépense ?'),
+                $this->editorial->text('api.home.who_spends.description', 'Répartition des dépenses entre les principaux sous-secteurs des administrations publiques.'),
                 $institutional['amount'] ?? null,
                 $this->ratioItems((array) ($institutional['items'] ?? []), $institutional['denominator'] ?? null),
                 $institutional['quality'] ?? [],
-                'Les sous-secteurs sont présentés à partir de leurs tableaux INSEE dédiés. Ils ne sont pas additionnés pour reconstruire le total APU.',
+                $this->editorial->text('api.home.who_spends.methodology', 'Les sous-secteurs sont présentés à partir de leurs tableaux INSEE dédiés. Ils ne sont pas additionnés pour reconstruire le total APU.'),
                 $this->provenance($institutional),
             ),
             'what_for' => $this->block(
-                'À quoi sert l’argent ?', 'Les dix fonctions COFOG des dépenses des administrations publiques.',
+                $this->editorial->text('api.home.what_for.title', 'À quoi sert l’argent ?'),
+                $this->editorial->text('api.home.what_for.description', 'Les dix fonctions COFOG des dépenses des administrations publiques.'),
                 $functional['amount'] ?? null,
                 $this->sortedItems((array) ($functional['items'] ?? [])), $functional['quality'] ?? [],
-                'COFOG consolidée : les pourcentages ont pour dénominateur le total des dépenses COFOG compatible.',
+                $this->editorial->text('api.home.what_for.methodology', 'COFOG consolidée : les pourcentages ont pour dénominateur le total des dépenses COFOG compatible.'),
                 $this->provenance($functional),
             ),
             'state_budget' => $this->block(
-                'Budget de l’État', 'Le budget de l’État est un périmètre distinct des dépenses de toutes les administrations publiques.',
+                $this->editorial->text('api.home.state_budget.title', 'Budget de l’État'),
+                $this->editorial->text('api.home.state_budget.description', 'Le budget de l’État est un périmètre distinct des dépenses de toutes les administrations publiques.'),
                 $state['amount'] ?? null, $this->sortedItems((array) ($state['distribution'] ?? [])), $state['quality'] ?? [],
-                'Comptabilité budgétaire : crédits de paiement exécutés du PLRG/RAP 2024. Navigation : mission → programme → action.',
+                $this->editorial->text('api.home.state_budget.methodology', 'Comptabilité budgétaire : crédits de paiement exécutés du PLRG/RAP 2024. Navigation : mission → programme → action.'),
                 ['source' => $state['source'] ?? null, 'dataset' => $state['dataset'] ?? null, 'source_url' => null, 'source_page' => null],
             ),
             'revenues' => $this->revenuesBlock($revenues),
@@ -112,7 +118,7 @@ class HomePagePresenter
             ['code' => 'state_budget_revenues', 'label' => 'Recettes budgétaires de l’État', 'amount' => $state['amount'] ?? null, 'percentage' => null, 'per_100' => null, 'quality_status' => $state['quality']['status'] ?? 'not_importable', 'accounting_basis' => $state['accounting_basis'] ?? 'budgetary', 'provenance' => $this->provenance($state)],
         ];
 
-        return ['title' => 'D’où vient l’argent ?', 'description' => 'Les recettes publiques et les recettes budgétaires de l’État sont deux périmètres comptables distincts.', 'amount' => null, 'unit' => 'EUR', 'items' => $items, 'percentage' => null, 'per_100' => null, 'quality_status' => $this->combinedStatus($items), 'quality' => ['status' => $this->combinedStatus($items), 'reason' => 'Les deux sources sont exposées séparément et ne sont pas additionnées.', 'included_amount' => null, 'excluded_amount' => null, 'excluded_items' => []], 'methodology' => 'INSEE fournit les recettes des APU en comptabilité nationale ; le PLRG fournit les recettes exécutées du budget de l’État en comptabilité budgétaire.', 'provenance' => ['sources' => array_values(array_filter([$public['source'] ?? null, $state['source'] ?? null])), 'datasets' => array_values(array_filter([$public['dataset'] ?? null, $state['dataset'] ?? null]))], 'sub_blocks' => ['public_revenues' => $public, 'state_budget_revenues' => $state]];
+        return ['title' => $this->editorial->text('api.home.revenues.title', 'D’où vient l’argent ?'), 'description' => $this->editorial->text('api.home.revenues.description', 'Les recettes publiques et les recettes budgétaires de l’État sont deux périmètres comptables distincts.'), 'amount' => null, 'unit' => 'EUR', 'items' => $items, 'percentage' => null, 'per_100' => null, 'quality_status' => $this->combinedStatus($items), 'quality' => ['status' => $this->combinedStatus($items), 'reason' => $this->editorial->text('api.home.revenues.quality_reason', 'Les deux sources sont exposées séparément et ne sont pas additionnées.'), 'included_amount' => null, 'excluded_amount' => null, 'excluded_items' => []], 'methodology' => $this->editorial->text('api.home.revenues.methodology', 'INSEE fournit les recettes des APU en comptabilité nationale ; le PLRG fournit les recettes exécutées du budget de l’État en comptabilité budgétaire.'), 'provenance' => ['sources' => array_values(array_filter([$public['source'] ?? null, $state['source'] ?? null])), 'datasets' => array_values(array_filter([$public['dataset'] ?? null, $state['dataset'] ?? null]))], 'sub_blocks' => ['public_revenues' => $public, 'state_budget_revenues' => $state]];
     }
 
     /** @param list<array<string,mixed>> $items */

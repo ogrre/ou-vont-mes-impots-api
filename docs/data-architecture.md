@@ -1,8 +1,11 @@
 # Architecture des données financières
 
-## Périmètre du MVP
+## Périmètre des données
 
-Le MVP représente l’**exécution 2025 du budget de l’État français**. Il ne représente ni les collectivités territoriales, ni les administrations de sécurité sociale, ni l’ensemble des administrations publiques.
+Le budget de l’État 2025 est une famille de données parmi les périmètres pris
+en charge. Les comptes nationaux INSEE, le COFOG 2024, les recettes budgétaires
+2024 et les séries historiques restent des familles séparées. Aucun de ces
+périmètres ne représente à lui seul l’ensemble des finances publiques.
 
 Les six CSV PLRG décrivent le même périmètre sous trois classifications officielles (`mission`, `ministry`, `nature`) et deux mesures :
 
@@ -18,6 +21,23 @@ AE et CP sont persistées séparément et ne doivent jamais être additionnées.
 Les quatre composantes correspondent exactement aux colonnes sources : budget général, budgets annexes, comptes d’affectation spéciale et comptes de concours financiers. Les classifications sont plates pour ce MVP ; `parent_id` n’est pas renseigné sans preuve d’une hiérarchie source.
 
 Le classeur de recettes utilise la classification séparée `state_budget_revenue`. Ses lignes de détail et agrégats officiels restent à plat, avec un indicateur empêchant de les sommer naïvement.
+
+## Référentiel éditorial
+
+Les montants annuels vivent dans `financial_observations`. Les textes qui
+expliquent les postes et les règles de lecture vivent dans
+`editorial_explanations` :
+
+- `cofog.GF01` à `cofog.GF10` et les sous-fonctions documentées ;
+- `revenue.*` pour les recettes fiscales et autres recettes ;
+- `budget_state.default` et `distribution.default` pour les textes génériques ;
+- `api.home.*` pour les titres, descriptions et méthodologies exposés par la
+  home.
+
+Le service `EditorialExplanationCatalog` met ces textes en cache. Un ajout ou
+une correction éditoriale se fait via le seeder dédié, sans modifier les
+observations historiques. Les clés peuvent ensuite recevoir d’autres locales
+sans changer le contrat financier.
 
 | Colonne source | Année | Statut |
 | --- | ---: | --- |

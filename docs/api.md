@@ -85,7 +85,7 @@ GET /api/v1/state-revenue?year=2025&status=revised_estimate
 GET /api/v1/state-revenue?year=2026&status=budget_bill
 ```
 
-La réponse n’expose volontairement aucun total calculé : le classeur contient simultanément des lignes détaillées, des déductions, des sous-totaux et des totaux officiels. Chaque élément précise `is_aggregate` et `is_deduction`.
+La réponse n’expose volontairement aucun total calculé : le classeur contient simultanément des lignes détaillées, des déductions, des sous-totaux et des totaux officiels. Chaque élément précise `is_aggregate`, `is_deduction` et une `description` pédagogique fournie par l’API. Les lignes ne doivent pas être additionnées entre elles.
 
 ## Erreurs
 
@@ -94,3 +94,49 @@ La réponse n’expose volontairement aucun total calculé : le classeur contien
 - `405 Method Not Allowed` : tentative d’écriture sur ces routes en lecture seule.
 
 Les requêtes CORS en lecture depuis un frontend séparé sont acceptées par la configuration Laravel actuelle.
+
+## Détail fonctionnel COFOG
+
+```http
+GET /api/v1/cofog/{year}/{category}
+```
+
+Retourne le montant d’une fonction COFOG et sa répartition par sous-fonction. Les montants, pourcentages, descriptions pédagogiques, qualité et provenance sont fournis par l’API.
+
+Exemple :
+
+```http
+GET /api/v1/cofog/2024/GF10
+```
+
+```json
+{
+  "year": 2024,
+  "code": "GF10",
+  "label": "Protection sociale",
+  "description": "Description de la fonction fournie par l’API.",
+  "amount": "693000000000.00",
+  "denominator": "693000000000.00",
+  "items": [
+    {
+      "code": "01.7",
+      "label": "Opérations concernant la dette publique",
+      "description": "Explication de la sous-fonction fournie par l’API.",
+      "amount": "58900000000.00",
+      "percent": "32.50",
+      "quality_status": "validated",
+      "provenance": {}
+    }
+  ],
+  "quality": { "status": "validated" },
+  "source": "INSEE",
+  "dataset": "insee-t-3301",
+  "accounting_basis": "national_accounts",
+  "scope": "general_government",
+  "measurement_type": "expenditure",
+  "stage": "execution",
+  "consolidation": "consolidated"
+}
+```
+
+Les sous-fonctions sont déjà comprises dans le montant de leur fonction parente et ne doivent pas être additionnées une seconde fois côté client.

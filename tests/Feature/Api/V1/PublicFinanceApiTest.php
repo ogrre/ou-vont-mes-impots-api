@@ -5,6 +5,7 @@ namespace Tests\Feature\Api\V1;
 use App\Models\Classification;
 use App\Models\ClassificationItem;
 use App\Models\DatasetFile;
+use App\Models\FinancialObservation;
 use App\Services\Api\PublicFinanceQuery;
 use App\Services\Imports\InseeCofogXlsxImporter;
 use App\Services\Imports\InseePublicAccountsXlsxImporter;
@@ -66,6 +67,15 @@ class PublicFinanceApiTest extends TestCase
         $this->getJson('/api/v1/search?q=a&limit=51')->assertUnprocessable()->assertJsonValidationErrors(['q', 'limit']);
     }
 
+    public function test_it_exposes_a_charged_cofog_detail(): void
+    {
+        $payload = ['year' => 2024, 'code' => 'GF10', 'label' => 'Protection sociale', 'description' => 'La protection sociale regroupe les retraites.', 'amount' => '693000000000.00', 'denominator' => '693000000000.00', 'items' => [['code' => 'GF101', 'label' => 'Maladie', 'description' => 'Les dépenses de maladie.', 'amount' => '250000000000.00', 'percent' => '36.07', 'quality_status' => 'validated']], 'quality' => ['status' => 'validated'], 'source' => 'INSEE', 'dataset' => 'insee-t-3301', 'accounting_basis' => 'national_accounts', 'scope' => 'general_government', 'measurement_type' => 'expenditure', 'stage' => 'execution', 'consolidation' => 'consolidated'];
+        $mock = $this->mock(PublicFinanceQuery::class);
+        $mock->shouldReceive('cofogDetail')->with(2024, 'GF10')->andReturn($payload);
+
+        $this->getJson('/api/v1/cofog/2024/GF10')->assertOk()->assertJsonPath('code', 'GF10')->assertJsonPath('label', 'Protection sociale')->assertJsonPath('description', 'La protection sociale regroupe les retraites.')->assertJsonPath('items.0.description', 'Les dépenses de maladie.')->assertJsonPath('items.0.amount', '250000000000.00');
+    }
+
     public function test_overview_keeps_national_accounts_and_state_budget_separate_and_reports_missing_2024_datasets(): void
     {
         $this->seed(DatabaseSeeder::class);
@@ -121,7 +131,6 @@ class PublicFinanceApiTest extends TestCase
         $this->seed(DatabaseSeeder::class);
         app(InseeCofogXlsxImporter::class)->import(DatasetFile::where('slug', 'insee-t-3301')->firstOrFail(), base_path('data/2024/insee/T_3301.xlsx'));
         app(StateBudgetRevenueCsvImporter::class)->import(DatasetFile::where('slug', 'state-budget-revenue-execution-2024')->firstOrFail(), base_path('data/2024/budget-etat/fiscalite/Annexe1-Etat_Recettes.csv'));
-
         $this->getJson('/api/v1/overview/2024')->assertOk()
             ->assertJsonPath('functional_distribution.accounting_basis', 'national_accounts')
             ->assertJsonPath('functional_distribution.items.0.percent', '10.83')
@@ -129,6 +138,23 @@ class PublicFinanceApiTest extends TestCase
             ->assertJsonPath('revenues.state_budget_revenues.accounting_basis', 'budgetary')
             ->assertJsonPath('revenues.state_budget_revenues.stage', 'execution')
             ->assertJsonPath('revenues.state_budget_revenues.quality.status', 'validated');
+    }
+
+    public function test_state_revenue_csv_preserves_nullable_scope_and_hierarchy_semantics(): void
+    {
+        $this->seed(DatabaseSeeder::class);
+        app(StateBudgetRevenueCsvImporter::class)->import(DatasetFile::where('slug', 'state-budget-revenue-execution-2024')->firstOrFail(), base_path('data/2024/budget-etat/fiscalite/Annexe1-Etat_Recettes.csv'));
+        $firstObservation = FinancialObservation::query()->where('year', 2024)->where('status', 'executed')->firstOrFail();
+        $firstObservation->update(['metadata' => [...($firstObservation->metadata ?? []), 'is_deduction' => true]]);
+
+        $items = $this->getJson('/api/v1/state-revenue?year=2024&status=executed')->assertOk()->json('items');
+
+        $this->assertNull($this->getJson('/api/v1/state-revenue?year=2024&status=executed')->json('scope.budget_component'));
+        $this->assertNotEmpty(array_filter($items, fn (array $item): bool => ($item['level'] ?? null) === 0 && $item['is_aggregate'] === false));
+        $this->assertNotEmpty(array_filter($items, fn (array $item): bool => ($item['level'] ?? null) === 1 && $item['is_aggregate'] === false));
+        $this->assertNotEmpty(array_filter($items, fn (array $item): bool => ($item['level'] ?? null) === 2 && $item['is_aggregate'] === true));
+        $this->assertNotEmpty(array_filter($items, fn (array $item): bool => ($item['level'] ?? null) === 3 && $item['is_aggregate'] === true));
+        $this->assertNotEmpty(array_filter($items, fn (array $item): bool => $item['is_deduction'] === true));
     }
 
     public function test_overview_builds_the_institutional_distribution_from_all_three_sector_datasets(): void

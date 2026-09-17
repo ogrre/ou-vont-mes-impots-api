@@ -15,7 +15,7 @@ class StateRevenueController extends Controller
      *
      * Retourne les recettes selon leur année et leur statut comptable. Une estimation révisée ne constitue pas une exécution.
      */
-    #[Response(type: "array{period: int, scope: array{code: string, label: string, budget_component: string}, status: string, flow_type: 'revenue', classification: 'revenue', currency: 'EUR', aggregation_warning: string, items: list<array{slug: string, label: string, amount: string, is_aggregate: bool, is_deduction: bool, source_row_number: int|null}>, source: array<string, mixed>}")]
+    #[Response(type: "array{period: int, scope: array{code: string, label: string, budget_component: string|null}, status: string, flow_type: 'revenue', classification: 'revenue', currency: 'EUR', aggregation_warning: string, items: list<array{code: string|null, slug: string, label: string, level: int|null, parent_code: string|null, breadcrumb: list<string>, amount: string, is_aggregate: bool, is_deduction: bool, source_row_number: int|null}>, source: array<string, mixed>}")]
     public function __invoke(StateRevenueIndexRequest $request, StateRevenueQuery $query): JsonResponse
     {
         $filters = $request->validated();

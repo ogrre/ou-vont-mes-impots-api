@@ -86,7 +86,7 @@ class PublicFinanceQueryTest extends TestCase
             'amount' => '0.00',
             'denominator' => '0.00',
             'items' => [[
-                'code' => 'GF01', 'label' => '  Fonction 1  ', 'amount' => '25.00', 'percent' => null,
+                'code' => 'GF01', 'label' => '  Fonction 1  ', 'description' => 'Cette catégorie regroupe les dépenses publiques classées sous «   Fonction 1   » dans le périmètre affiché.', 'amount' => '25.00', 'percent' => null,
                 'per_100' => null, 'quality_status' => 'validated',
                 'provenance' => [
                     'dataset' => 'dataset', 'source' => 'Source', 'source_url' => 'https://example.test',

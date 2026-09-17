@@ -9,7 +9,10 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class StateRevenueQuery
 {
-    public function __construct(private readonly DatasetProvenancePresenter $provenance) {}
+    public function __construct(
+        private readonly DatasetProvenancePresenter $provenance,
+        private readonly EditorialExplanationCatalog $editorial,
+    ) {}
 
     /**
      * @return array{
@@ -104,16 +107,28 @@ class StateRevenueQuery
     {
         $normalized = mb_strtolower($label);
 
-        return match (true) {
-            str_contains($normalized, 'enregistrement, timbre') => 'Cette catégorie regroupe les droits d’enregistrement, les droits de timbre et diverses contributions et taxes indirectes. Elle est distincte de la TVA et de la taxe intérieure sur les produits énergétiques.',
-            str_contains($normalized, 'impôt sur le revenu') => 'L’impôt sur le revenu est prélevé sur les revenus des ménages et des personnes physiques.',
-            str_contains($normalized, 'impôt sur les sociétés') => 'L’impôt sur les sociétés est acquitté par les entreprises et personnes morales sur leurs bénéfices.',
-            str_contains($normalized, 'taxe sur la valeur ajoutée') || str_contains($normalized, 'tva') => 'La TVA est une taxe indirecte incluse dans le prix des biens et services. Elle est collectée par les entreprises puis reversée à l’État.',
-            str_contains($normalized, 'taxe intérieure sur les produits énergétiques') || str_contains($normalized, 'ticpe') => 'La TICPE est une taxe indirecte appliquée principalement aux produits énergétiques, notamment les carburants.',
-            str_contains($normalized, 'amendes') => 'Cette catégorie regroupe les amendes et pénalités versées au budget de l’État.',
-            str_contains($normalized, 'dividendes') => 'Cette catégorie correspond aux revenus versés à l’État au titre de ses participations et placements.',
-            default => 'Cette ligne décrit une recette du budget de l’État dans le périmètre de la comptabilité budgétaire. Elle est fournie par le fichier d’exécution et ne doit pas être additionnée aux sous-totaux ou aux totaux affichés ailleurs.',
+        $key = match (true) {
+            str_contains($normalized, 'enregistrement, timbre') => 'revenue.registration_stamp',
+            str_contains($normalized, 'impôt sur le revenu') => 'revenue.income_tax',
+            str_contains($normalized, 'impôt sur les sociétés') => 'revenue.corporate_tax',
+            str_contains($normalized, 'taxe sur la valeur ajoutée') || str_contains($normalized, 'tva') => 'revenue.vat',
+            str_contains($normalized, 'taxe intérieure sur les produits énergétiques') || str_contains($normalized, 'ticpe') => 'revenue.energy_tax',
+            str_contains($normalized, 'amendes') => 'revenue.fines',
+            str_contains($normalized, 'dividendes') => 'revenue.dividends',
+            default => 'revenue.default',
         };
+
+        $fallbacks = [
+            'revenue.registration_stamp' => 'Cette catégorie regroupe les droits d’enregistrement, les droits de timbre et diverses contributions et taxes indirectes. Elle est distincte de la TVA et de la taxe intérieure sur les produits énergétiques.',
+            'revenue.income_tax' => 'L’impôt sur le revenu est prélevé sur les revenus des ménages et des personnes physiques.',
+            'revenue.corporate_tax' => 'L’impôt sur les sociétés est acquitté par les entreprises et personnes morales sur leurs bénéfices.',
+            'revenue.vat' => 'La TVA est une taxe indirecte incluse dans le prix des biens et services. Elle est collectée par les entreprises puis reversée à l’État.',
+            'revenue.energy_tax' => 'La TICPE est une taxe indirecte appliquée principalement aux produits énergétiques, notamment les carburants.',
+            'revenue.fines' => 'Cette catégorie regroupe les amendes et pénalités versées au budget de l’État.',
+            'revenue.dividends' => 'Cette catégorie correspond aux revenus versés à l’État au titre de ses participations et placements.',
+        ];
+
+        return $this->editorial->text($key, $fallbacks[$key] ?? 'Cette ligne décrit une recette du budget de l’État dans le périmètre de la comptabilité budgétaire. Elle est fournie par le fichier d’exécution et ne doit pas être additionnée aux sous-totaux ou aux totaux affichés ailleurs.');
     }
 
     private function budgetComponentCode(?BudgetComponent $component): ?string

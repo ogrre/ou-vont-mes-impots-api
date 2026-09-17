@@ -9,9 +9,10 @@ plus compréhensibles à partir de données officielles, neutres et traçables.
 
 Ce dépôt contient uniquement le backend. Le frontend est maintenu séparément.
 
-> **État du développement :** la couche de données du MVP « Budget de l’État
-> français — exécution 2025 », ses imports et les premiers endpoints REST en
-> lecture seule sont implémentés.
+> **État du développement :** le backend expose un modèle canonique de finances
+> publiques, des données INSEE 2024 et historiques, le budget de l’État 2024
+> (RAP/PLRG), les recettes budgétaires 2024 et une API REST v1 en lecture seule.
+> Les niveaux de couverture et la qualité sont retournés avec les données.
 
 ## Objectifs du projet
 
@@ -29,16 +30,23 @@ Ce dépôt contient uniquement le backend. Le frontend est maintenu séparément
 
 Fonctionnalités disponibles :
 
-- import CSV en streaming des six vues PLRG 2025 par mission, ministère et
-  nature, en AE et CP ;
-- import XLSX dédié des estimations de recettes du budget général ;
-- normalisation en EUR, checksum SHA-256, ligne source et lot d’import ;
-- rejet des doublons et réconciliation des totaux PLRG.
+- modèle canonique séparant sources, datasets, périmètres, classifications,
+  catégories hiérarchiques, observations et provenance ;
+- comptes nationaux INSEE : dépenses, recettes, solde, administrations et
+  fonctions COFOG ;
+- séries historiques INSEE avec filtres de périmètre, classification et base
+  comptable ;
+- budget de l’État 2024 : mission → programme → action → sous-action, AE/CP,
+  budget initial/exécution et qualité de l’import RAP ;
+- recettes budgétaires de l’État 2024 avec hiérarchie, lignes agrégées,
+  déductions et descriptions pédagogiques ;
+- recherche globale insensible à la casse et aux accents dans les catégories
+  canoniques ;
+- réponses enrichies par la provenance, la qualité et le contexte comptable ;
+- documentation interactive OpenAPI 3.1 générée par Scramble.
 
-Fonctionnalités encore prévues :
-
-- des séries historiques et des ventilations des recettes et dépenses ;
-- des imports supplémentaires depuis les portails open data officiels.
+Les extensions futures doivent préserver la séparation entre comptabilité
+nationale et comptabilité budgétaire, ainsi qu’entre AE et CP.
 
 ## Vue d’ensemble de l’architecture
 
@@ -182,22 +190,27 @@ Ils ne contiennent aucun montant officiel.
 
 ## Exécution des imports
 
-Après `php artisan migrate --seed` :
+Après `php artisan migrate --seed`, les imports connus peuvent être lancés en
+une seule commande :
 
 ```bash
-php artisan dataset:import state-expenditure-2025-mission-ae data/2025/budget-etat/depenses-par-mission-plrg-ae-2025.csv
-php artisan dataset:import state-expenditure-2025-mission-cp data/2025/budget-etat/depenses-par-mission-plrg-cp-2025.csv
-php artisan dataset:import state-expenditure-2025-ministry-ae data/2025/budget-etat/depenses-par-ministeres-plrg-ae-2025.csv
-php artisan dataset:import state-expenditure-2025-ministry-cp data/2025/budget-etat/depenses-par-ministeres-plrg-cp-2025.csv
-php artisan dataset:import state-expenditure-2025-nature-ae data/2025/budget-etat/depenses-par-nature-plrg-ae-2025.csv
-php artisan dataset:import state-expenditure-2025-nature-cp data/2025/budget-etat/depenses-par-nature-plrg-cp-2025.csv
-php artisan data:validate state-expenditure-2025
-php artisan dataset:import state-general-budget-revenue-2025-2026 data/2025/budget-etat/econ-fin-pub-recettes-budget.xlsx
+php artisan dataset:import-known data
 ```
 
-Dans Docker, préfixez chaque commande par
-`docker compose -f docker-compose-dev.yml exec app`. Un même checksum est rejeté
-pour un même descripteur.
+Pour un import ou un traitement ciblé :
+
+```bash
+php artisan dataset:import <descriptor> <path>
+php artisan dataset:import-rap 2024
+php artisan data:validate state-expenditure-2025
+```
+
+`dataset:import-known` est idempotente pour les fichiers déjà connus. Les
+imports RAP téléchargent et analysent les rapports officiels ; ils peuvent être
+limités avec `--program`, `--download-only`, `--parse-only` ou `--force`. Dans
+Docker, préfixez chaque commande par
+`docker compose -f docker-compose-dev.yml exec app`. Un même checksum est
+rejeté pour un même descripteur.
 
 ## Lancement local de l’API
 
@@ -224,25 +237,49 @@ JSON, utilisable par des générateurs de clients et d’autres outils, est expo
 sur [`/docs/api.json`](http://localhost:8080/docs/api.json). Ces deux routes sont
 publiques, comme l’API en lecture seule.
 
-L’API v1 est publique, sans authentification et en lecture seule :
+L’API v1 est publique, sans authentification et en lecture seule. Elle comprend :
 
 | Méthode | Chemin | Rôle |
 | --- | --- | --- |
 | `GET` | `/up` | Contrôle de santé Laravel |
 | `GET` | `/api/v1/version` | Versions de l’application et de l’API |
-| `GET` | `/api/v1/state-expenditure` | Dépenses exécutées du budget de l’État |
-| `GET` | `/api/v1/state-revenue` | Estimations de recettes du budget général |
+| `GET` | `/api/v1/years` | Années effectivement disponibles |
+| `GET` | `/api/v1/sources` | Datasets publiables et leurs sources |
+| `GET` | `/api/v1/home/{year}` | Payload éditorial de la page d’accueil |
+| `GET` | `/api/v1/overview/{year}` | Vue agrégée des finances publiques |
+| `GET` | `/api/v1/history` | Séries historiques compatibles |
+| `GET` | `/api/v1/search` | Recherche canonique multi-niveaux |
+| `GET` | `/api/v1/categories/{classification}` | Catégories d’une classification |
+| `GET` | `/api/v1/categories/{classification}/{category}/children` | Enfants d’une catégorie |
+| `GET` | `/api/v1/cofog/{year}/{category}` | Détail d’une fonction COFOG |
+| `GET` | `/api/v1/budget-state/{year}/missions` | Missions du budget de l’État |
+| `GET` | `/api/v1/budget-state/{year}/missions/{mission}` | Détail d’une mission |
+| `GET` | `/api/v1/budget-state/{year}/programmes/{programme}` | Détail d’un programme |
+| `GET` | `/api/v1/budget-state/{year}/programmes/{programme}/actions` | Actions d’un programme |
+| `GET` | `/api/v1/budget-state/{year}/actions/{action}` | Détail d’une action ou sous-action |
+| `GET` | `/api/v1/budget-state/{year}/distribution` | Répartition par mission |
+| `GET` | `/api/v1/budget-state/{year}/missions/{mission}/distribution` | Répartition d’une mission |
+| `GET` | `/api/v1/budget-state/{year}/programmes/{programme}/distribution` | Répartition d’un programme |
+| `GET` | `/api/v1/state-expenditure` | Dépenses budgétaires par classification |
+| `GET` | `/api/v1/state-revenue` | Recettes budgétaires de l’État |
+| `GET` | `/api/v1/methodology` | Règles comptables exposées au frontend |
 
 Exemples :
 
 ```bash
 curl 'http://localhost:8080/api/v1/state-expenditure?year=2025&classification=mission&measure=cp'
 curl 'http://localhost:8080/api/v1/state-revenue?year=2025&status=revised_estimate'
+curl 'http://localhost:8080/api/v1/search?q=enseignement&year=2024&limit=20'
+curl 'http://localhost:8080/api/v1/cofog/2024/GF10'
+curl 'http://localhost:8080/api/v1/budget-state/2024/distribution?measurement=payment_credit&stage=executed&unit=per_100'
 ```
 
 Les filtres, valeurs autorisées et contrats de réponse sont décrits dans
-[`docs/api.md`](docs/api.md). Les montants sont sérialisés sous forme de chaînes
-décimales en EUR afin de préserver leur précision côté JavaScript.
+[`docs/api.md`](docs/api.md). La liste générée et testée des routes est
+également disponible dans OpenAPI. Les montants sont sérialisés sous forme de
+chaînes décimales en EUR afin de préserver leur précision côté JavaScript ;
+`null` signifie qu’une valeur n’est pas disponible et ne doit jamais être
+transformé en zéro.
 
 `[TODO: ajouter l’URL de production de l’API lorsqu’elle sera disponible]`
 
@@ -381,14 +418,10 @@ ou en révèle une.
 
 ## Feuille de route
 
-- Compléter et vérifier la provenance et les licences des sources présentes.
-- Étendre l’API REST avec les futures séries historiques validées.
-- Ajouter les calculs de pourcentage avec un dénominateur explicite.
-- Publier une spécification d’API et connecter le frontend séparé.
-- Déployer le MVP sur Dokploy et compléter les sauvegardes PostgreSQL.
-
-Ces éléments sont prévus, mais ne constituent ni des fonctionnalités terminées
-ni des dates de livraison.
+Le plan technique et produit maintenu pour les futures sessions Codex se trouve
+dans [`plan.md`](plan.md). Les prochains travaux doivent prioriser la qualité
+des données, la couverture historique, la provenance et la compatibilité avec
+le frontend Vue séparé avant d’ajouter de nouveaux graphiques.
 
 ## Licence
 

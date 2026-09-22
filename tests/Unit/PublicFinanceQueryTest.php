@@ -2,6 +2,8 @@
 
 namespace Tests\Unit;
 
+use App\Enums\BudgetStage;
+use App\Enums\FinancialMeasure;
 use App\Models\ClassificationItem;
 use App\Models\Dataset;
 use App\Models\FinancialObservation;
@@ -130,6 +132,9 @@ class PublicFinanceQueryTest extends TestCase
     public function test_budget_nodes_expose_stable_identifiers_and_descriptions(): void
     {
         $query = app(PublicFinanceQuery::class);
+        $source = new Source(['name' => 'Budget source', 'homepage_url' => 'https://example.test/budget']);
+        $dataset = new Dataset(['slug' => 'budget-dataset']);
+        $dataset->setRelation('source', $source);
         $item = new ClassificationItem([
             'code' => null,
             'slug' => 'justice',
@@ -137,9 +142,14 @@ class PublicFinanceQueryTest extends TestCase
             'description' => 'Les crédits consacrés à la justice.',
             'metadata' => [],
         ]);
-        $item->setRelation('observations', collect());
+        $ae = new FinancialObservation(['amount' => '12.00', 'measure' => FinancialMeasure::CommitmentAuthorization, 'budget_stage' => BudgetStage::Execution, 'metadata' => []]);
+        $ae->setRelation('dataset', $dataset);
+        $cp = new FinancialObservation(['amount' => '10.00', 'measure' => FinancialMeasure::PaymentCredit, 'budget_stage' => BudgetStage::Execution, 'metadata' => []]);
+        $cp->setRelation('dataset', $dataset);
+        $item->setRelation('observations', collect([$ae, $cp]));
 
-        $node = $this->invoker($query)('budgetNode', $item, 2024, 'mission', false);
+        $invoke = $this->invoker($query);
+        $node = $invoke('budgetNode', $item, 2024, 'mission', false);
 
         $this->assertSame([
             'code' => null,
@@ -147,6 +157,14 @@ class PublicFinanceQueryTest extends TestCase
             'label' => 'Justice',
             'description' => 'Les crédits consacrés à la justice.',
         ], array_intersect_key($node, array_flip(['code', 'slug', 'label', 'description'])));
+        $this->assertTrue($node['contributes_to_program_total']);
+        $this->assertSame('12.00', $node['ae']['execution']);
+        $this->assertSame('10.00', $node['cp']['execution']);
+        $this->assertSame('Budget source', $node['provenance']['source']);
+
+        $excluded = new ClassificationItem(['code' => 'X', 'slug' => 'excluded', 'official_label' => 'Excluded', 'metadata' => ['contributes_to_program_total' => false]]);
+        $excluded->setRelation('observations', collect());
+        $this->assertFalse($invoke('budgetNode', $excluded, 2024, 'action', false)['contributes_to_program_total']);
     }
 
     /** @return callable(string, mixed ...$arguments): mixed */

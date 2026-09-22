@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Services\Api\HomePagePresenter;
 use App\Services\Api\PublicFinanceQuery;
+use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class PublicFinanceController extends Controller
 {
@@ -27,7 +29,7 @@ class PublicFinanceController extends Controller
 
     public function home(int $year, PublicFinanceQuery $query, HomePagePresenter $presenter): JsonResponse
     {
-        return response()->json($presenter->present($query->overview($year)));
+        return $this->cachedJson("api:v1:home:{$year}:v1", fn (): array => $presenter->present($query->overview($year)));
     }
 
     public function budgetStateMissions(int $year, PublicFinanceQuery $query): JsonResponse
@@ -59,7 +61,21 @@ class PublicFinanceController extends Controller
     {
         $data = $request->validate(['mission' => ['nullable', 'string'], 'programme' => ['nullable', 'string'], 'measurement' => ['nullable', 'in:commitment_authorization,payment_credit'], 'stage' => ['nullable', 'in:initial_budget,executed'], 'unit' => ['nullable', 'in:amount,percent,per_100']]);
 
-        return response()->json($query->budgetStateDistribution($year, $data['mission'] ?? null, $data['programme'] ?? null, $data['measurement'] ?? 'payment_credit', $data['stage'] ?? 'executed', $data['unit'] ?? 'per_100'));
+        $mission = $data['mission'] ?? null;
+        $programme = $data['programme'] ?? null;
+        $measurement = $data['measurement'] ?? 'payment_credit';
+        $stage = $data['stage'] ?? 'executed';
+        $unit = $data['unit'] ?? 'per_100';
+        $key = 'api:v1:budget-distribution:'.sha1(implode('|', [$year, $mission, $programme, $measurement, $stage, $unit]));
+
+        return $this->cachedJson($key, fn (): array => $query->budgetStateDistribution($year, $mission, $programme, $measurement, $stage, $unit));
+    }
+
+    /** @param Closure(): array<string,mixed> $callback */
+    private function cachedJson(string $key, Closure $callback): JsonResponse
+    {
+        return response()->json(Cache::remember($key, now()->addHours(6), $callback))
+            ->header('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
     }
 
     public function categories(string $classification, PublicFinanceQuery $query): JsonResponse

@@ -139,7 +139,7 @@ class PublicFinanceQuery
     {
         $observations = $item->relationLoaded('observations') ? $item->observations : $item->observations()->with('dataset.source', 'datasetFile')->get();
         $status = $this->budgetQuality($item, $observations);
-        $node = ['code' => $item->code, 'label' => $item->official_label, 'year' => $year, 'hierarchy_level' => $level, 'parent_action_code' => $item->metadata['parent_action_code'] ?? null, 'contributes_to_program_total' => $item->metadata['contributes_to_program_total'] ?? true, 'ae' => $this->budgetAmounts($observations, 'commitment_authorization'), 'cp' => $this->budgetAmounts($observations, 'payment_credit'), 'quality' => $status, 'provenance' => $this->budgetProvenance($observations)];
+        $node = ['code' => $item->code, 'slug' => $item->slug, 'label' => $item->official_label, 'description' => $item->description, 'year' => $year, 'hierarchy_level' => $level, 'parent_action_code' => $item->metadata['parent_action_code'] ?? null, 'contributes_to_program_total' => $item->metadata['contributes_to_program_total'] ?? true, 'ae' => $this->budgetAmounts($observations, 'commitment_authorization'), 'cp' => $this->budgetAmounts($observations, 'payment_credit'), 'quality' => $status, 'provenance' => $this->budgetProvenance($observations)];
         if ($includeChildren) {
             $children = $item->children()->with('observations.dataset.source', 'observations.datasetFile')->get();
             $childNodes = $children->map(fn (ClassificationItem $child): array => $this->budgetNode($child, $year, $this->level($child)))->values()->all();

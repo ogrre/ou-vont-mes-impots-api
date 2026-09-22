@@ -23,7 +23,13 @@ de ligne source.
 - `datasets` décrit un jeu logique, sa période, son unité et sa méthode.
 - `accounting_scopes` décrit les périmètres institutionnels et leur hiérarchie.
 - `classifications` et `classification_items` portent les nomenclatures
-  officielles ou éditoriales : mission, ministère, nature, INSEE, COFOG à venir.
+  officielles : mission, ministère, nature, INSEE, COFOG et recettes. Les
+  libellés officiels et les relations hiérarchiques restent dans ce référentiel.
+- `editorial_explanations` porte les explications pédagogiques stables :
+  définitions COFOG, explications des recettes, textes génériques de
+  distribution et contenus de la home. Ces textes sont identifiés par une clé
+  stable et une locale ; ils ne sont pas recopiés dans chaque observation
+  annuelle.
 - `budget_components` sépare budget général, budgets annexes, CAS et comptes de
   concours financiers.
 
@@ -51,6 +57,11 @@ contenir des transferts internes ; les dépenses consolidées ne doivent donc pa
 Les catégories agrégées et les lignes détaillées sont conservées avec leur
 provenance. Une somme n’est validée que si le dataset documente explicitement le
 dénominateur et le périmètre commun.
+
+Les descriptions issues directement d’une source peuvent rester sur
+`classification_items.description`. Une explication pédagogique éditoriale
+plus riche doit être ajoutée à `editorial_explanations`, afin de ne pas mélanger
+le texte officiel importé avec le contenu explicatif du site.
 
 ## Sources actuellement prises en charge
 

@@ -15,6 +15,8 @@ class PublicFinanceQuery
 {
     private const STATE_CLASSIFICATION = 'state_budget_programme_action';
 
+    public function __construct(private readonly EditorialExplanationCatalog $editorial) {}
+
     /** @return array<string,mixed> */
     public function budgetStateMissions(int $year): array
     {
@@ -96,7 +98,7 @@ class PublicFinanceQuery
             $amount = (string) ($child[$field][$stageKey] ?? '0.00');
             $status = $child['quality']['status'] ?? 'validated';
 
-            return ['code' => $child['code'], 'label' => $child['label'], 'description' => $child['description'] ?? sprintf('Cette ligne décrit les crédits du budget de l’État consacrés à « %s ».', $child['label']), 'amount' => $status === 'not_importable' ? null : $amount, 'quality_status' => $status, 'quality' => $child['quality'], 'provenance' => $child['provenance']];
+            return ['code' => $child['code'], 'label' => $child['label'], 'description' => $child['description'] ?? $this->editorial->template('budget_state.default', 'Cette ligne décrit les crédits du budget de l’État consacrés à « :label ».', [':label' => $child['label']]), 'amount' => $status === 'not_importable' ? null : $amount, 'quality_status' => $status, 'quality' => $child['quality'], 'provenance' => $child['provenance']];
         });
         $included = $items->filter(fn (array $item): bool => $item['amount'] !== null);
         $denominator = DecimalMoney::sum($included->pluck('amount'));
@@ -137,7 +139,7 @@ class PublicFinanceQuery
     {
         $observations = $item->relationLoaded('observations') ? $item->observations : $item->observations()->with('dataset.source', 'datasetFile')->get();
         $status = $this->budgetQuality($item, $observations);
-        $node = ['code' => $item->code, 'label' => $item->official_label, 'year' => $year, 'hierarchy_level' => $level, 'parent_action_code' => $item->metadata['parent_action_code'] ?? null, 'contributes_to_program_total' => $item->metadata['contributes_to_program_total'] ?? true, 'ae' => $this->budgetAmounts($observations, 'commitment_authorization'), 'cp' => $this->budgetAmounts($observations, 'payment_credit'), 'quality' => $status, 'provenance' => $this->budgetProvenance($observations)];
+        $node = ['code' => $item->code, 'slug' => $item->slug, 'label' => $item->official_label, 'description' => $item->description, 'year' => $year, 'hierarchy_level' => $level, 'parent_action_code' => $item->metadata['parent_action_code'] ?? null, 'contributes_to_program_total' => $item->metadata['contributes_to_program_total'] ?? true, 'ae' => $this->budgetAmounts($observations, 'commitment_authorization'), 'cp' => $this->budgetAmounts($observations, 'payment_credit'), 'quality' => $status, 'provenance' => $this->budgetProvenance($observations)];
         if ($includeChildren) {
             $children = $item->children()->with('observations.dataset.source', 'observations.datasetFile')->get();
             $childNodes = $children->map(fn (ClassificationItem $child): array => $this->budgetNode($child, $year, $this->level($child)))->values()->all();
@@ -291,27 +293,7 @@ class PublicFinanceQuery
 
     private function cofogDescription(?string $code, string $label): string
     {
-        return match ($code) {
-            'GF01' => 'Les services généraux couvrent le fonctionnement des institutions publiques, les services financiers et fiscaux, les affaires étrangères ainsi que les opérations liées à la dette publique.',
-            'GF02' => 'La défense regroupe les dépenses consacrées à la défense militaire, à la protection du territoire et aux infrastructures et équipements militaires.',
-            'GF03' => 'L’ordre et la sécurité publics comprennent notamment la police, la justice, les établissements pénitentiaires, les tribunaux et les services de secours.',
-            'GF04' => 'Les affaires économiques rassemblent les politiques qui soutiennent l’activité économique : transports, agriculture, énergie, recherche, emploi et développement des entreprises.',
-            'GF05' => 'La protection de l’environnement couvre la gestion des déchets, la lutte contre les pollutions, la protection de la biodiversité et la gestion des ressources naturelles.',
-            'GF06' => 'Les logements et équipements collectifs comprennent le logement, l’aménagement urbain, l’eau, l’éclairage public et les infrastructures collectives.',
-            'GF07' => 'La santé regroupe les services hospitaliers, les soins ambulatoires, les médicaments et les politiques de prévention et de santé publique.',
-            'GF08' => 'Les loisirs, la culture et le culte comprennent les activités sportives, culturelles, les médias, les bibliothèques, les musées et la protection du patrimoine.',
-            'GF09' => 'L’enseignement couvre les différents niveaux d’éducation, de la maternelle à l’enseignement supérieur, ainsi que les services qui les accompagnent.',
-            'GF10' => 'La protection sociale regroupe notamment les retraites, les prestations liées à la maladie, au handicap, à la famille, au chômage, au logement et à l’exclusion sociale.',
-            '01.1' => 'Le fonctionnement des organes exécutifs et législatifs, les affaires financières et fiscales, les affaires étrangères et les services généraux des administrations.',
-            '01.2' => 'Les aides et transferts économiques vers l’extérieur, notamment la coopération internationale et l’aide publique au développement lorsqu’ils sont classés dans cette fonction.',
-            '01.3' => 'Le fonctionnement courant des services généraux des administrations publiques qui ne relève pas d’une fonction plus précise : administration, gestion des bâtiments et services communs.',
-            '01.4' => 'Les dépenses consacrées à la recherche fondamentale, c’est-à-dire la recherche visant à produire de nouvelles connaissances sans application immédiate déterminée.',
-            '01.5' => 'La recherche et le développement appliqués au fonctionnement des services généraux des administrations publiques.',
-            '01.6' => 'Les autres services généraux des administrations publiques qui ne peuvent pas être classés dans les sous-fonctions précédentes.',
-            '01.7' => 'Les opérations liées à la dette publique, notamment les intérêts et les frais de gestion de la dette. Ce poste ne signifie pas que le remboursement du capital est une dépense de fonctionnement classique.',
-            '01.8' => 'Les transferts de caractère général entre administrations publiques, lorsqu’ils ne peuvent pas être rattachés à une politique publique plus précise.',
-            default => sprintf('Cette catégorie décrit les dépenses publiques consacrées à « %s ».', $label),
-        };
+        return $this->editorial->text('cofog.'.($code ?? 'default'), $this->editorial->template('cofog.default', 'Cette catégorie décrit les dépenses publiques consacrées à « :label ».', [':label' => $label]));
     }
 
     /** @return array<string,mixed> */
@@ -485,7 +467,7 @@ class PublicFinanceQuery
      */
     private function distributionBlock(int $year, string $scope, string $basis, string $measurement, string $stage, string $consolidation, Collection $rows, string $denominator): array
     {
-        $items = $rows->map(fn (FinancialObservation $row): array => ['code' => $row->classificationItem->code, 'label' => $row->classificationItem->official_label, 'description' => $row->classificationItem->description ?: sprintf('Cette catégorie regroupe les dépenses publiques classées sous « %s » dans le périmètre affiché.', $row->classificationItem->official_label), 'amount' => $row->amount, 'percent' => $denominator === '0.00' ? null : bcmul(bcdiv($row->amount, $denominator, 8), '100', 2), 'per_100' => $denominator === '0.00' ? null : bcmul(bcdiv($row->amount, $denominator, 8), '100', 2), 'quality_status' => 'validated', 'provenance' => $this->overviewProvenance($row)])->values()->all();
+        $items = $rows->map(fn (FinancialObservation $row): array => ['code' => $row->classificationItem->code, 'label' => $row->classificationItem->official_label, 'description' => $row->classificationItem->description ?: $this->editorial->template('distribution.default', 'Cette catégorie regroupe les dépenses publiques classées sous « :label » dans le périmètre affiché.', [':label' => $row->classificationItem->official_label]), 'amount' => $row->amount, 'percent' => $denominator === '0.00' ? null : bcmul(bcdiv($row->amount, $denominator, 8), '100', 2), 'per_100' => $denominator === '0.00' ? null : bcmul(bcdiv($row->amount, $denominator, 8), '100', 2), 'quality_status' => 'validated', 'provenance' => $this->overviewProvenance($row)])->values()->all();
 
         return ['year' => $year, 'scope' => $scope, 'accounting_basis' => $basis, 'measurement_type' => $measurement, 'stage' => $stage, 'consolidation' => $consolidation, 'amount' => $denominator, 'denominator' => $denominator, 'items' => $items, 'quality' => ['status' => 'validated', 'coverage_percent' => '100.00', 'included_amount' => $denominator, 'excluded_amount' => null, 'excluded_items' => []]];
     }

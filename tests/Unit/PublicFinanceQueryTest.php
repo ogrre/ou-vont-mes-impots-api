@@ -127,6 +127,28 @@ class PublicFinanceQueryTest extends TestCase
         $this->assertSame('action', $invoke('level', $implicitAction));
     }
 
+    public function test_budget_nodes_expose_stable_identifiers_and_descriptions(): void
+    {
+        $query = app(PublicFinanceQuery::class);
+        $item = new ClassificationItem([
+            'code' => null,
+            'slug' => 'justice',
+            'official_label' => 'Justice',
+            'description' => 'Les crédits consacrés à la justice.',
+            'metadata' => [],
+        ]);
+        $item->setRelation('observations', collect());
+
+        $node = $this->invoker($query)('budgetNode', $item, 2024, 'mission', false);
+
+        $this->assertSame([
+            'code' => null,
+            'slug' => 'justice',
+            'label' => 'Justice',
+            'description' => 'Les crédits consacrés à la justice.',
+        ], array_intersect_key($node, array_flip(['code', 'slug', 'label', 'description'])));
+    }
+
     /** @return callable(string, mixed ...$arguments): mixed */
     private function invoker(PublicFinanceQuery $query): callable
     {

@@ -17,7 +17,10 @@ class StateExpenditureQuery
         'payment_credit' => FinancialMeasure::PaymentCredit,
     ];
 
-    public function __construct(private readonly DatasetProvenancePresenter $provenance) {}
+    public function __construct(
+        private readonly DatasetProvenancePresenter $provenance,
+        private readonly EditorialExplanationCatalog $editorial,
+    ) {}
 
     /**
      * @return array{
@@ -92,7 +95,7 @@ class StateExpenditureQuery
             'total' => $total,
             'percentage_denominator' => [
                 'amount' => $total,
-                'description' => 'Total du même exercice, périmètre, statut, mesure, classification et ensemble de composantes budgétaires.',
+                'description' => $this->editorial->text('state_expenditure.percentage_denominator', 'Total du même exercice, périmètre, statut, mesure, classification et ensemble de composantes budgétaires.'),
             ],
             'items' => $items,
             'source' => $this->provenance->present($first->dataset, $first->datasetFile, $first->importBatch),

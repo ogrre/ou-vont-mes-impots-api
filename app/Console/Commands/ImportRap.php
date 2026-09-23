@@ -20,6 +20,7 @@ use App\Services\Rap\RapCatalogCrawler;
 use App\Services\Rap\RapDivergenceAnalyzer;
 use App\Services\Rap\RapPdfExtractor;
 use App\Services\Rap\RapTextParser;
+use App\Support\RapMoney;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -158,7 +159,7 @@ class ImportRap extends Command
     private function importParsed(Dataset $dataset, array $entry, string $pdf, array $parsed, Classification $classification, AccountingScope $scope): void
     {
         DB::transaction(function () use ($dataset, $entry, $pdf, $parsed, $classification, $scope): void {
-            $reviewRequired = false;
+            $reviewRequired = ($parsed['review_required'] ?? false) === true;
             foreach ($parsed['actions'] as $action) {
                 $reviewRequired = $reviewRequired || (($action['review_required'] ?? false) === true);
             }
@@ -172,6 +173,10 @@ class ImportRap extends Command
                 $item = ClassificationItem::query()->updateOrCreate(['classification_id' => $classification->id, 'code' => $entry['program'].'-'.$row['code']], ['parent_id' => $programItem->id, 'official_label' => $row['label'], 'slug' => 'programme-'.$entry['program'].'-action-'.str_replace('.', '-', $row['code']), 'metadata' => ['level' => $row['hierarchy_level'] ?? (str_contains($row['code'], '.') ? 'sub_action' : 'action'), 'parent_action_code' => $row['parent_action_code'] ?? null, 'contributes_to_program_total' => $row['contributes_to_program_total'] ?? ! str_contains($row['code'], '.')]]);
                 if (($parsed['format'] ?? null) === 'institutional_credits') {
                     foreach (($row['special_measurements'] ?? []) as $measure => $amount) {
+                        if ($amount === null) {
+                            continue;
+                        }
+                        $this->assertSafeAmount($amount);
                         $financialMeasure = FinancialMeasure::tryFrom((string) $measure);
                         if ($financialMeasure === null) {
                             continue;
@@ -185,11 +190,20 @@ class ImportRap extends Command
                 foreach ([['ae_lfi', AeCp::Ae], ['ae_consumed', AeCp::Ae], ['cp_lfi', AeCp::Cp], ['cp_consumed', AeCp::Cp]] as [$field, $aeCp]) {
                     if ($row[$field] === null) {
                         continue;
-                    } $stage = str_contains($field, 'lfi') ? BudgetStage::InitialBudget : BudgetStage::Execution;
+                    }
+                    $this->assertSafeAmount($row[$field]);
+                    $stage = str_contains($field, 'lfi') ? BudgetStage::InitialBudget : BudgetStage::Execution;
                     FinancialObservation::query()->updateOrCreate(['dataset_file_id' => $file->id, 'source_identifier' => $entry['program'].'|'.$row['code'].'|'.$field], ['dataset_id' => $dataset->id, 'import_batch_id' => $batch->id, 'year' => 2024, 'accounting_scope_id' => $scope->id, 'institution_scope_id' => $scope->id, 'classification_item_id' => $item->id, 'category_id' => $item->id, 'status' => $stage === BudgetStage::Execution ? ObservationStatus::Executed : ObservationStatus::InitialEstimate, 'measurement_type' => MeasurementType::Expenditure, 'accounting_basis' => AccountingBasis::Budgetary, 'budget_stage' => $stage, 'ae_cp' => $aeCp, 'is_consolidated' => false, 'measure' => $aeCp === AeCp::Ae ? 'commitment_authorization' : 'payment_credit', 'flow_type' => FlowType::Expenditure, 'amount' => $row[$field], 'currency' => 'EUR', 'metadata' => ['source_url' => $entry['url'], 'source_page' => null, 'raw_label' => $row['label'], 'source_field' => $field, 'review_required' => $row['review_required']]]);
                 }
             }
         });
+    }
+
+    private function assertSafeAmount(mixed $amount): void
+    {
+        if (! is_string($amount) || RapMoney::normalize($amount) !== $amount) {
+            throw new \RuntimeException('Montant RAP non fiable : import refusé.');
+        }
     }
 
     /** @return array<string,string> */

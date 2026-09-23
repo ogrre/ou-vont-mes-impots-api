@@ -2,6 +2,7 @@
 
 namespace App\Services\Rap;
 
+use App\Support\DecimalMoney;
 use Illuminate\Support\Facades\File;
 
 class RapDivergenceAnalyzer
@@ -152,7 +153,7 @@ class RapDivergenceAnalyzer
     {
         $field = $key;
         $result = [];
-        $cumulative = 0;
+        $cumulative = '0.00';
         foreach (($parsed['actions'] ?? []) as $position => $action) {
             if (! is_array($action)) {
                 continue;
@@ -162,7 +163,7 @@ class RapDivergenceAnalyzer
             }
             $contributes = ($action['contributes_to_program_total'] ?? false) === true;
             if ($contributes) {
-                $cumulative += (int) $action[$field];
+                $cumulative = DecimalMoney::add($cumulative, (string) $action[$field]);
             }
             $result[] = ['position' => $position + 1, 'code' => $action['code'] ?? null, 'label' => $action['label'] ?? null, 'hierarchy_level' => $action['hierarchy_level'] ?? null, 'parent_action_code' => $action['parent_action_code'] ?? null, 'contributes_to_program_total' => $contributes, 'page' => null, 'value' => $action[$field] ?? null, 'sum_contribution' => $contributes ? $action[$field] : 0, 'cumulative_total' => $cumulative, 'extracted_lines' => $action['extracted_lines'] ?? []];
         }

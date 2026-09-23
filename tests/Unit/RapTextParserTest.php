@@ -33,27 +33,27 @@ TEXT;
 
         $result = app(RapTextParser::class)->parse($text, '999', 'Programme test');
 
-        $this->assertSame(300, $result['actions'][0]['ae_lfi']);
-        $this->assertSame(30, $result['actions'][0]['ae_consumed']);
-        $this->assertSame(300, $result['actions'][0]['cp_lfi']);
-        $this->assertSame(32, $result['actions'][0]['cp_consumed']);
+        $this->assertSame('300.00', $result['actions'][0]['ae_lfi']);
+        $this->assertSame('30.00', $result['actions'][0]['ae_consumed']);
+        $this->assertSame('300.00', $result['actions'][0]['cp_lfi']);
+        $this->assertSame('32.00', $result['actions'][0]['cp_consumed']);
         $this->assertArrayNotHasKey('cp_amounts', $result['actions'][1]);
         $this->assertSame('01', $result['actions'][0]['code']);
         $this->assertSame('Action de test', $result['actions'][0]['label']);
         $this->assertSame('action', $result['actions'][0]['hierarchy_level']);
         $this->assertNull($result['actions'][0]['parent_action_code']);
         $this->assertTrue($result['actions'][0]['contributes_to_program_total']);
-        $this->assertSame([100, 200, 300, 300, 10, 20, 30], $result['actions'][0]['amounts']);
-        $this->assertSame([100, 200, 300, 300], $result['actions'][0]['amount_rows'][0]);
-        $this->assertSame([10, 20, 30], $result['actions'][0]['amount_rows'][1]);
+        $this->assertSame(['100.00', '200.00', '300.00', '300.00', '10.00', '20.00', '30.00'], $result['actions'][0]['amounts']);
+        $this->assertSame(['100.00', '200.00', '300.00', '300.00'], $result['actions'][0]['amount_rows'][0]);
+        $this->assertSame(['10.00', '20.00', '30.00'], $result['actions'][0]['amount_rows'][1]);
         $this->assertSame([], $result['actions'][0]['titles']);
         $this->assertFalse($result['actions'][0]['review_required']);
         $this->assertSame(['01', '03'], array_column($result['actions'], 'code'));
         $this->assertSame(['actions' => 2, 'sub_actions' => 0], $result['counts']);
         $this->assertSame(['year', 'program', 'actions', 'parser', 'warnings', 'validation', 'review_required', 'counts'], array_keys($result));
         $this->assertSame(['code' => '999', 'name' => 'Programme test'], $result['program']);
-        $this->assertSame(['ae_lfi' => 300, 'ae_consumed' => 30, 'cp_lfi' => 300, 'cp_consumed' => 32], $result['validation']['totals']);
-        $this->assertSame([], $result['validation']['differences']);
+        $this->assertSame(['ae_lfi' => '300.00', 'ae_consumed' => '30.00', 'cp_lfi' => '300.00', 'cp_consumed' => '32.00'], $result['validation']['totals']);
+        $this->assertSame(['ae_consumed', 'cp_lfi', 'cp_consumed'], array_keys($result['validation']['differences']));
     }
 
     public function test_it_keeps_ae_rows_when_the_cp_section_is_absent(): void
@@ -67,7 +67,7 @@ TEXT;
         $result = app(RapTextParser::class)->parse($text, '123', 'Programme sans CP');
 
         $this->assertSame(['01'], array_column($result['actions'], 'code'));
-        $this->assertSame([100, 200, 300], $result['actions'][0]['amounts']);
+        $this->assertSame(['100.00', '200.00', '300.00'], $result['actions'][0]['amounts']);
         $this->assertArrayNotHasKey('cp_amounts', $result['actions'][0]);
         $this->assertNull($result['validation']['totals']['cp_lfi']);
         $this->assertNull($result['validation']['totals']['cp_consumed']);
@@ -106,9 +106,9 @@ TEXT;
         $action = $result['actions'][0];
 
         $this->assertSame('institutional_credits', $result['format']);
-        $this->assertSame(341864000, $action['special_measurements']['allocation']);
-        $this->assertSame(341864000, $action['special_measurements']['credits_opened']);
-        $this->assertSame(341864000, $action['special_measurements']['expenditure_recorded']);
+        $this->assertSame('341864000.00', $action['special_measurements']['allocation']);
+        $this->assertSame('341864000.00', $action['special_measurements']['credits_opened']);
+        $this->assertSame('341864000.00', $action['special_measurements']['expenditure_recorded']);
         $this->assertNull($action['ae_lfi']);
         $this->assertNull($action['cp_lfi']);
         $this->assertSame('Sénat', $action['label']);
@@ -132,9 +132,9 @@ TEXT;
 
         $result = app(RapTextParser::class)->parse($text, '511', 'Assemblée nationale');
 
-        $this->assertSame(607647569, $result['actions'][0]['special_measurements']['allocation']);
-        $this->assertSame(627181842, $result['actions'][0]['special_measurements']['credits_opened']);
-        $this->assertSame(600000000, $result['actions'][0]['special_measurements']['expenditure_recorded']);
+        $this->assertSame('607647569.00', $result['actions'][0]['special_measurements']['allocation']);
+        $this->assertSame('627181842.00', $result['actions'][0]['special_measurements']['credits_opened']);
+        $this->assertSame('600000000.00', $result['actions'][0]['special_measurements']['expenditure_recorded']);
     }
 
     public function test_it_reads_multicolumn_totals_after_the_label_and_detects_mismatches(): void
@@ -158,19 +158,19 @@ TEXT;
 
         $result = app(RapTextParser::class)->parse($text, '999', 'Programme test');
 
-        $this->assertSame(2007, $result['validation']['totals']['ae_lfi']);
-        $this->assertSame(6, $result['validation']['totals']['ae_consumed']);
-        $this->assertSame(6, $result['validation']['totals']['cp_lfi']);
-        $this->assertSame(2007, $result['validation']['totals']['cp_consumed']);
+        $this->assertSame('2007.00', $result['validation']['totals']['ae_lfi']);
+        $this->assertSame('6.00', $result['validation']['totals']['ae_consumed']);
+        $this->assertSame('6.00', $result['validation']['totals']['cp_lfi']);
+        $this->assertSame('2007.00', $result['validation']['totals']['cp_consumed']);
         $this->assertSame(1000, $result['validation']['tolerance_eur']);
         $this->assertTrue($result['validation']['review_required']);
-        $this->assertSame(6, $result['actions'][0]['ae_lfi']);
-        $this->assertSame(6, $result['actions'][0]['cp_consumed']);
+        $this->assertSame('6.00', $result['actions'][0]['ae_lfi']);
+        $this->assertSame('6.00', $result['actions'][0]['cp_consumed']);
         $this->assertArrayHasKey('ae_lfi', $result['validation']['differences']);
         $this->assertArrayHasKey('cp_consumed', $result['validation']['differences']);
-        $this->assertSame(6, $result['validation']['differences']['ae_lfi']['actions_sum']);
-        $this->assertSame(2007, $result['validation']['differences']['ae_lfi']['programme_total']);
-        $this->assertSame(-2001, $result['validation']['differences']['ae_lfi']['difference']);
+        $this->assertSame('6.00', $result['validation']['differences']['ae_lfi']['actions_sum']);
+        $this->assertSame('2007.00', $result['validation']['differences']['ae_lfi']['programme_total']);
+        $this->assertSame('-2001.00', $result['validation']['differences']['ae_lfi']['difference']);
     }
 
     public function test_it_rejects_an_anchor_without_a_numbered_action(): void
@@ -202,10 +202,10 @@ TEXT;
 
         $this->assertSame(['1', '2', '3', '4'], array_column($result['actions'], 'code'));
         $this->assertSame('Sénat', $result['actions'][0]['label']);
-        $this->assertSame([341864000, 341864000, 341864000], $result['actions'][0]['amounts']);
+        $this->assertSame(['341864000.00', '341864000.00', '341864000.00'], $result['actions'][0]['amounts']);
         $this->assertSame('Commission des dépenses', $result['actions'][1]['label']);
         $this->assertSame('Observatoire Total local', $result['actions'][2]['label']);
-        $this->assertSame([607647569, 627181842, 600000000], $result['actions'][3]['amounts']);
+        $this->assertSame(['607647569.00', '627181842.00', '600000000.00'], $result['actions'][3]['amounts']);
         $this->assertFalse($result['actions'][0]['contributes_to_program_total']);
         $this->assertSame('institutional_credits', $result['format']);
         $this->assertSame(['actions' => 4, 'sub_actions' => 0], $result['counts']);
@@ -266,9 +266,9 @@ TEXT;
         $result = app(RapTextParser::class)->parse($text, '999', 'Programme test');
 
         $amounts = array_merge(...array_column($result['actions'], 'amounts'));
-        $this->assertContains(1234, $amounts);
-        $this->assertContains(-5, $amounts);
-        $this->assertContains(6, $amounts);
+        $this->assertContains('1234.00', $amounts);
+        $this->assertContains('-5.00', $amounts);
+        $this->assertContains('6.00', $amounts);
         $this->assertNull($result['validation']['totals']['ae_lfi']);
         $this->assertTrue($result['actions'][0]['review_required']);
     }
@@ -283,57 +283,57 @@ TEXT;
             return $reflection->invoke($parser, ...$arguments);
         };
 
-        $this->assertSame(1234, $invoke('amount', "1\u{00a0}234,50"));
-        $this->assertSame([1234, -2, 3], $invoke('amountColumns', '+1 234       -2       3'));
+        $this->assertSame('1234.50', $invoke('amount', "1\u{00a0}234,50"));
+        $this->assertSame(['1234.00', '-2.00', '3.00'], $invoke('amountColumns', '+1 234       -2       3'));
         $this->assertNull($invoke('rowTotal', []));
-        $this->assertSame(3, $invoke('rowTotal', [1, 2, 3]));
+        $this->assertSame('3.00', $invoke('rowTotal', ['1.00', '2.00', '3.00']));
         $finished = $invoke('finish', ['code' => '01', 'label' => 'Action'], ['1  2  3', '1  2 euros']);
-        $this->assertSame([[1, 2, 3]], $finished['amount_rows']);
-        $this->assertSame([1, 2, 3], $finished['amounts']);
+        $this->assertSame([['1.00', '2.00', '3.00']], $finished['amount_rows']);
+        $this->assertSame(['1.00', '2.00', '3.00'], $finished['amounts']);
         $invalidAmounts = $invoke('finish', ['code' => '02', 'label' => 'Action'], ['note 123']);
         $this->assertSame([], $invalidAmounts['amount_rows']);
         $unicodeAmounts = $invoke('finish', ['code' => '03', 'label' => 'Action'], ["1\u{00a0}234"]);
-        $this->assertSame([[1234]], $unicodeAmounts['amount_rows']);
+        $this->assertSame([['1234.00']], $unicodeAmounts['amount_rows']);
 
         $rows = $invoke('parseRows', "  01 – Première action\nTexte mentionnant Total des AE consommées\n1  2  3\nTexte préfixe 99 – faux\ntotal des AE consommées\n7  8  9\n  02 – Deuxième action  4  5  6");
         $this->assertSame(['01', '02'], array_column($rows, 'code'));
-        $this->assertSame([1, 2, 3], $rows[0]['amounts']);
-        $this->assertSame([4, 5, 6], $rows[1]['amounts']);
+        $this->assertSame(['1.00', '2.00', '3.00'], $rows[0]['amounts']);
+        $this->assertSame(['4.00', '5.00', '6.00'], $rows[1]['amounts']);
 
         $continuation = $invoke('parseRows', "01 – Action\nSuite de libellé sans nombres\n02 – Action suivante  4  5  6");
         $this->assertSame(['01', '02'], array_column($continuation, 'code'));
         $this->assertSame([], $continuation[0]['amounts']);
         $this->assertSame([], $continuation[0]['extracted_lines']);
         $validation = $invoke('validateTotals', "Total des AE prévues en LFI  100\nTotal des AE consommées  100", [
-            ['ae_lfi' => 100, 'ae_consumed' => 100, 'contributes_to_program_total' => true],
-            ['ae_lfi' => 9999, 'ae_consumed' => 9999, 'contributes_to_program_total' => false],
+            ['ae_lfi' => '100.00', 'ae_consumed' => '100.00', 'contributes_to_program_total' => true],
+            ['ae_lfi' => '9999.00', 'ae_consumed' => '9999.00', 'contributes_to_program_total' => false],
         ]);
-        $this->assertSame(100, $validation['totals']['ae_lfi']);
-        $this->assertSame(100, $validation['totals']['ae_consumed']);
+        $this->assertSame('100.00', $validation['totals']['ae_lfi']);
+        $this->assertSame('100.00', $validation['totals']['ae_consumed']);
         $this->assertSame([], $validation['differences']);
         $this->assertFalse($validation['review_required']);
 
         $missingAmount = $invoke('validateTotals', 'Total des AE prévues en LFI  1001', [
             ['contributes_to_program_total' => true],
         ]);
-        $this->assertSame(['actions_sum' => 0, 'programme_total' => 1001, 'difference' => -1001], $missingAmount['differences']['ae_lfi']);
+        $this->assertSame(['actions_sum' => null, 'programme_total' => '1001.00', 'difference' => null], $missingAmount['differences']['ae_lfi']);
 
         $atTolerance = $invoke('validateTotals', 'Total des AE prévues en LFI  2000', [
-            ['ae_lfi' => 1000, 'contributes_to_program_total' => true],
+            ['ae_lfi' => '1000.00', 'contributes_to_program_total' => true],
         ]);
         $this->assertSame([], $atTolerance['differences']);
         $this->assertFalse($atTolerance['review_required']);
 
         $overTolerance = $invoke('validateTotals', 'Total des AE prévues en LFI  2001', [
-            ['ae_lfi' => 1000],
+            ['ae_lfi' => '1000.00'],
         ]);
-        $this->assertSame(['actions_sum' => 0, 'programme_total' => 2001, 'difference' => -2001], $overTolerance['differences']['ae_lfi']);
+        $this->assertSame(['actions_sum' => '0.00', 'programme_total' => '2001.00', 'difference' => '-2001.00'], $overTolerance['differences']['ae_lfi']);
         $this->assertTrue($overTolerance['review_required']);
     }
 
     /** @param array<int,string> $lines */
     #[DataProvider('totalAfterCases')]
-    public function test_it_extracts_totals_inline_or_from_the_next_three_lines(array $lines, string $label, ?int $expected): void
+    public function test_it_extracts_totals_inline_or_from_the_next_three_lines(array $lines, string $label, ?string $expected): void
     {
         $parser = app(RapTextParser::class);
         $method = new \ReflectionMethod($parser, 'totalAfter');
@@ -341,18 +341,18 @@ TEXT;
         $this->assertSame($expected, $method->invoke($parser, $lines, $label));
     }
 
-    /** @return iterable<string,array{array<int,string>,string,?int}> */
+    /** @return iterable<string,array{array<int,string>,string,?string}> */
     public static function totalAfterCases(): iterable
     {
-        yield 'inline columns' => [['Total des recettes  6  2007'], 'Total des recettes', 2007];
-        yield 'next line' => [['Total des recettes', '6  2007'], 'Total des recettes', 2007];
-        yield 'third following line' => [['Total des recettes', 'texte', 'texte', '  2007'], 'Total des recettes', 2007];
+        yield 'inline columns' => [['Total des recettes  6  2007'], 'Total des recettes', '2007.00'];
+        yield 'next line' => [['Total des recettes', '6  2007'], 'Total des recettes', '2007.00'];
+        yield 'third following line' => [['Total des recettes', 'texte', 'texte', '  2007'], 'Total des recettes', '2007.00'];
         yield 'outside lookahead window' => [['Total des recettes', 'texte', 'texte', 'texte', '2007'], 'Total des recettes', null];
-        yield 'accented label matches different case' => [['TOTAL DES RECETTES PRÉVUES EN LFI  6  2007'], 'Total des recettes prévues en LFI', 2007];
-        yield 'ignores a trailing text column' => [['Total des recettes  2007  note'], 'Total des recettes', 2007];
-        yield 'uppercase accented search label' => [['TOTAL DES RECETTES PRÉVUES EN LFI 2007'], 'TOTAL DES RECETTES PRÉVUES EN LFI', 2007];
-        yield 'multibyte label adjacent to amount' => [['Total des AE consommées2007'], 'Total des AE consommées', 2007];
-        yield 'nonbreaking space thousands separator' => [["Total des recettes  1\u{00a0}234"], 'Total des recettes', 1234];
+        yield 'accented label matches different case' => [['TOTAL DES RECETTES PRÉVUES EN LFI  6  2007'], 'Total des recettes prévues en LFI', '2007.00'];
+        yield 'ignores a trailing text column' => [['Total des recettes  2007  note'], 'Total des recettes', '2007.00'];
+        yield 'uppercase accented search label' => [['TOTAL DES RECETTES PRÉVUES EN LFI 2007'], 'TOTAL DES RECETTES PRÉVUES EN LFI', '2007.00'];
+        yield 'multibyte label adjacent to amount' => [['Total des AE consommées2007'], 'Total des AE consommées', '2007.00'];
+        yield 'nonbreaking space thousands separator' => [["Total des recettes  1\u{00a0}234"], 'Total des recettes', '1234.00'];
         yield 'rejects numeric prefix followed by letters' => [['Total des recettes  xyz2007'], 'Total des recettes', null];
         yield 'rejects a text suffix after number' => [['Total des recettes  2007 note'], 'Total des recettes', null];
         yield 'label absent' => [['Autre ligne'], 'Total des recettes', null];
@@ -370,6 +370,7 @@ TEXT;
     /** @return iterable<string,array{string,bool}> */
     public static function amountLineCases(): iterable
     {
+        yield 'negative middle column' => ['123 456  -1 234,50  122 221,50', true];
         yield 'signed decimal' => ['- 1 234,50', true];
         yield 'integer with outer spaces' => [' 1 234 ', true];
         yield 'narrow nonbreaking space thousands separator' => ["1\u{202f}234", true];

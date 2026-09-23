@@ -6,6 +6,7 @@ RUN apk add --no-cache \
         libzip \
         nginx \
         postgresql-libs \
+        poppler-utils \
         supervisor \
     && apk add --no-cache --virtual .build-deps \
         $PHPIZE_DEPS \

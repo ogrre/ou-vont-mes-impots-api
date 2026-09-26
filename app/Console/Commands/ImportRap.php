@@ -20,6 +20,7 @@ use App\Services\Rap\RapCatalogCrawler;
 use App\Services\Rap\RapDivergenceAnalyzer;
 use App\Services\Rap\RapPdfExtractor;
 use App\Services\Rap\RapTextParser;
+use App\Support\RapMoney;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -29,6 +30,9 @@ use Throwable;
 
 class ImportRap extends Command
 {
+    /** @var list<string> */
+    private const EXPECTED_NON_IMPORTABLE_PROGRAMS = ['501', '531', '532', '533', '542'];
+
     protected $signature = 'dataset:import-rap {year} {--download-only} {--parse-only} {--program=} {--catalog=} {--force}';
 
     protected $description = 'Télécharge et importe les RAP depuis la page officielle Budget.gouv';
@@ -103,7 +107,7 @@ class ImportRap extends Command
 
         $source = Source::query()->updateOrCreate(['slug' => 'budget-gouv-plrg-2024'], ['name' => 'PLRG/RAP 2024', 'publisher' => 'Direction du Budget', 'homepage_url' => RapCatalogCrawler::PAGE_URL, 'description' => 'Rapports annuels de performances 2024.', 'is_official' => true]);
         $dataset = Dataset::query()->updateOrCreate(['slug' => 'state-budget-rap-2024'], ['source_id' => $source->id, 'name' => 'Rapports annuels de performances 2024', 'description' => 'Dépenses de l’État par programme, action et sous-action.', 'source_url' => RapCatalogCrawler::PAGE_URL, 'publication_title' => 'PLRG 2024 — RAP', 'publication_date' => '2025-04-16', 'downloaded_at' => now(), 'license_name' => 'Licence ouverte / Etalab', 'year' => 2024, 'accounting_system' => 'budgetary', 'scope' => 'french_state_budget', 'unit' => 'EUR', 'metadata' => ['accounting_scope' => 'french_state_budget', 'reporting_period' => '2024', 'status' => 'executed', 'unit' => 'EUR']]);
-        $report = ['discovered' => $discovered, 'downloaded' => $download['downloaded'], 'failed' => $download['failed'], 'parsed' => 0, 'programmes' => 0, 'actions' => 0, 'sub_actions' => 0, 'errors' => [], 'divergences' => [], 'special_diagnostics' => []];
+        $report = ['discovered' => $discovered, 'downloaded' => $download['downloaded'], 'failed' => $download['failed'], 'parsed' => 0, 'programmes' => 0, 'actions' => 0, 'sub_actions' => 0, 'errors' => [], 'non_importable' => [], 'divergences' => [], 'special_diagnostics' => []];
         $scope = AccountingScope::query()->where('code', 'french_state_budget')->firstOrFail();
         $classification = Classification::query()->firstOrCreate(['code' => 'state_budget_programme_action'], ['name' => 'Budget de l’État — mission, programme, action', 'description' => 'Hiérarchie des RAP du budget de l’État.']);
         $missionMap = $this->missionMap();
@@ -114,7 +118,8 @@ class ImportRap extends Command
             $pdf = $raw.'/P'.$entry['program'].'.pdf';
             $jsonPath = $processed.'/'.$entry['program'].'.json';
             if (! is_file($pdf)) {
-                $report['errors'][] = ['program' => $entry['program'], 'error' => 'PDF absent'];
+                $error = ['program' => $entry['program'], 'error' => 'PDF absent'];
+                $report['errors'][] = $error;
 
                 continue;
             }
@@ -137,7 +142,11 @@ class ImportRap extends Command
                 $report['sub_actions'] += $parsed['counts']['sub_actions'];
             } catch (Throwable $e) {
                 File::put($jsonPath, json_encode(['program' => $entry, 'review_required' => true, 'error' => $e->getMessage()], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-                $report['errors'][] = ['program' => $entry['program'], 'error' => $e->getMessage()];
+                $error = ['program' => $entry['program'], 'error' => $e->getMessage()];
+                $report['errors'][] = $error;
+                if ($this->isExpectedNonImportable($entry['program'], $e->getMessage())) {
+                    $report['non_importable'][] = $error;
+                }
                 if (in_array((string) $entry['program'], ['501', '511', '521', '531', '532', '533', '541', '542'], true)) {
                     $report['special_diagnostics'][] = ['program' => $entry['program'], 'terminology_found' => 'specific institutional format', 'available_amounts' => [], 'proposed_measurement_type' => [], 'importable' => false, 'reason' => $e->getMessage()];
                 }
@@ -147,8 +156,19 @@ class ImportRap extends Command
         $report['divergence_report'] = $processed.'/divergence-report.json';
         File::put($processed.'/report.json', json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
         $this->line(sprintf('RAP 2024 : discovered=%d downloaded=%d failed=%d parsed=%d programmes=%d actions=%d sous-actions=%d', $report['discovered'], $report['downloaded'], count($report['failed']), $report['parsed'], $report['programmes'], $report['actions'], $report['sub_actions']));
+        if ($report['non_importable'] !== []) {
+            $this->warn(sprintf('%d programme(s) non importable(s), conservé(s) en revue : %s', count($report['non_importable']), implode(', ', array_column($report['non_importable'], 'program'))));
+        }
 
-        return $report['errors'] !== [] ? self::FAILURE : self::SUCCESS;
+        $unexpectedErrors = array_filter($report['errors'], fn (array $error): bool => ! $this->isExpectedNonImportable((string) ($error['program'] ?? ''), (string) $error['error']));
+
+        return $report['parsed'] === 0 || $unexpectedErrors !== [] ? self::FAILURE : self::SUCCESS;
+    }
+
+    private function isExpectedNonImportable(string|int $program, string $error): bool
+    {
+        return in_array((string) $program, self::EXPECTED_NON_IMPORTABLE_PROGRAMS, true)
+            && str_contains(mb_strtolower($error), 'section 2024 par action introuvable');
     }
 
     /**
@@ -158,7 +178,7 @@ class ImportRap extends Command
     private function importParsed(Dataset $dataset, array $entry, string $pdf, array $parsed, Classification $classification, AccountingScope $scope): void
     {
         DB::transaction(function () use ($dataset, $entry, $pdf, $parsed, $classification, $scope): void {
-            $reviewRequired = false;
+            $reviewRequired = ($parsed['review_required'] ?? false) === true;
             foreach ($parsed['actions'] as $action) {
                 $reviewRequired = $reviewRequired || (($action['review_required'] ?? false) === true);
             }
@@ -172,6 +192,10 @@ class ImportRap extends Command
                 $item = ClassificationItem::query()->updateOrCreate(['classification_id' => $classification->id, 'code' => $entry['program'].'-'.$row['code']], ['parent_id' => $programItem->id, 'official_label' => $row['label'], 'slug' => 'programme-'.$entry['program'].'-action-'.str_replace('.', '-', $row['code']), 'metadata' => ['level' => $row['hierarchy_level'] ?? (str_contains($row['code'], '.') ? 'sub_action' : 'action'), 'parent_action_code' => $row['parent_action_code'] ?? null, 'contributes_to_program_total' => $row['contributes_to_program_total'] ?? ! str_contains($row['code'], '.')]]);
                 if (($parsed['format'] ?? null) === 'institutional_credits') {
                     foreach (($row['special_measurements'] ?? []) as $measure => $amount) {
+                        if ($amount === null) {
+                            continue;
+                        }
+                        $this->assertSafeAmount($amount);
                         $financialMeasure = FinancialMeasure::tryFrom((string) $measure);
                         if ($financialMeasure === null) {
                             continue;
@@ -185,11 +209,20 @@ class ImportRap extends Command
                 foreach ([['ae_lfi', AeCp::Ae], ['ae_consumed', AeCp::Ae], ['cp_lfi', AeCp::Cp], ['cp_consumed', AeCp::Cp]] as [$field, $aeCp]) {
                     if ($row[$field] === null) {
                         continue;
-                    } $stage = str_contains($field, 'lfi') ? BudgetStage::InitialBudget : BudgetStage::Execution;
+                    }
+                    $this->assertSafeAmount($row[$field]);
+                    $stage = str_contains($field, 'lfi') ? BudgetStage::InitialBudget : BudgetStage::Execution;
                     FinancialObservation::query()->updateOrCreate(['dataset_file_id' => $file->id, 'source_identifier' => $entry['program'].'|'.$row['code'].'|'.$field], ['dataset_id' => $dataset->id, 'import_batch_id' => $batch->id, 'year' => 2024, 'accounting_scope_id' => $scope->id, 'institution_scope_id' => $scope->id, 'classification_item_id' => $item->id, 'category_id' => $item->id, 'status' => $stage === BudgetStage::Execution ? ObservationStatus::Executed : ObservationStatus::InitialEstimate, 'measurement_type' => MeasurementType::Expenditure, 'accounting_basis' => AccountingBasis::Budgetary, 'budget_stage' => $stage, 'ae_cp' => $aeCp, 'is_consolidated' => false, 'measure' => $aeCp === AeCp::Ae ? 'commitment_authorization' : 'payment_credit', 'flow_type' => FlowType::Expenditure, 'amount' => $row[$field], 'currency' => 'EUR', 'metadata' => ['source_url' => $entry['url'], 'source_page' => null, 'raw_label' => $row['label'], 'source_field' => $field, 'review_required' => $row['review_required']]]);
                 }
             }
         });
+    }
+
+    private function assertSafeAmount(mixed $amount): void
+    {
+        if (! is_string($amount) || RapMoney::normalize($amount) !== $amount) {
+            throw new \RuntimeException('Montant RAP non fiable : import refusé.');
+        }
     }
 
     /** @return array<string,string> */

@@ -2,6 +2,8 @@
 
 namespace App\Services\Rap;
 
+use App\Support\DecimalMoney;
+use App\Support\RapMoney;
 use RuntimeException;
 
 class RapTextParser
@@ -43,7 +45,7 @@ class RapTextParser
             $byCode[$action['code']]['cp_lfi'] = $this->rowTotal($cpRows[0] ?? []);
             $byCode[$action['code']]['cp_consumed'] = $this->rowTotal($cpRows[1] ?? []);
             $byCode[$action['code']]['cp_amounts'] = $action['amounts'];
-            $byCode[$action['code']]['review_required'] = $byCode[$action['code']]['review_required'] || count($action['amounts']) < 6;
+            $byCode[$action['code']]['review_required'] = ($byCode[$action['code']]['review_required'] ?? true) || $action['review_required'];
         }
         $actions = array_values(array_filter($byCode, fn (array $action): bool => $action['amounts'] !== []));
         if ($actions === []) {
@@ -58,7 +60,7 @@ class RapTextParser
             'warnings' => [],
         ];
         $result['validation'] = $this->validateTotals($section, $actions);
-        $result['review_required'] = $result['validation']['review_required'];
+        $result['review_required'] = $result['validation']['review_required'] || in_array(true, array_column($actions, 'review_required'), true);
         $result['counts'] = ['actions' => count($actions), 'sub_actions' => count(array_filter($actions, fn (array $a): bool => str_contains($a['code'], '.')))];
 
         return $result;
@@ -85,7 +87,7 @@ class RapTextParser
                 continue;
             }
             preg_match_all('/\d{1,3}(?:[ \x{00a0}]\d{3})+|\d+/u', $line, $matches);
-            $numbers = array_map(fn (string $value): int => $this->amount($value), $matches[0]);
+            $numbers = array_map(fn (string $value): ?string => $this->amount($value), $matches[0]);
             if (count($numbers) < 3) {
                 continue;
             }
@@ -106,7 +108,7 @@ class RapTextParser
                 'amount_rows' => [],
                 'special_measurements' => ['allocation' => $last[0], 'credits_opened' => $last[1], 'expenditure_recorded' => $last[2]],
                 'ae_lfi' => null, 'ae_consumed' => null, 'cp_lfi' => null, 'cp_consumed' => null,
-                'titles' => [], 'review_required' => false,
+                'titles' => [], 'review_required' => in_array(null, $last, true),
             ];
         }
         if ($actions === []) {
@@ -119,7 +121,7 @@ class RapTextParser
             'format' => 'institutional_credits',
             'actions' => $actions,
             'parser' => ['anchor' => 'institutional credits table', 'amount_mapping' => 'allocation-opened-recorded-v1'],
-            'review_required' => false,
+            'review_required' => in_array(true, array_column($actions, 'review_required'), true),
             'warnings' => ['Ces montants ne sont pas des AE/CP et ne doivent pas être convertis.'],
             'validation' => ['tolerance_eur' => 1000, 'totals' => [], 'differences' => [], 'review_required' => false],
             'counts' => ['actions' => count($actions), 'sub_actions' => 0],
@@ -185,7 +187,7 @@ class RapTextParser
     {
         $amountRows = [];
         foreach ($numberLines as $line) {
-            if (preg_match('/^[+-]?[\d\s.,]+$/u', $line)) {
+            if ($this->isAmountLine($line)) {
                 $amountRows[] = $this->amountColumns($line);
             }
         }
@@ -195,7 +197,7 @@ class RapTextParser
         // The number of title columns varies between RAPs. The total is the
         // last populated column (the final column may include FdC and AdP on
         // the LFI row). Never rely on a fixed title index here.
-        $total = fn (array $row): ?int => $this->rowTotal($row);
+        $total = fn (array $row): ?string => $this->rowTotal($row);
 
         return [
             'code' => $current['code'],
@@ -211,13 +213,13 @@ class RapTextParser
             'cp_lfi' => null,
             'cp_consumed' => null,
             'titles' => [],
-            'review_required' => count($amounts) < 6,
+            'review_required' => count($amounts) < 6 || in_array(null, $amounts, true),
         ];
     }
 
     private function isAmountLine(string $line): bool
     {
-        return $line !== '' && (bool) preg_match('/^[+\-]?\s*[\d\s.,]+$/u', $line);
+        return $line !== '' && (bool) preg_match('/^[+\-\d\s.,]+$/u', $line);
     }
 
     /** @return array{0:string,1:string|null} */
@@ -232,7 +234,7 @@ class RapTextParser
 
     /**
      * @param  array<int,array<string,mixed>>  $actions
-     * @return array{tolerance_eur:int,totals:array<string,int|null>,differences:array<string,array{actions_sum:int,programme_total:int,difference:int}>,review_required:bool}
+     * @return array{tolerance_eur:int,totals:array<string,string|null>,differences:array<string,array{actions_sum:string|null,programme_total:string,difference:string|null}>,review_required:bool}
      */
     private function validateTotals(string $section, array $actions): array
     {
@@ -247,9 +249,11 @@ class RapTextParser
             // also publishes sub-actions, parent and child rows must not be
             // added together or the programme is double-counted.
             $rootActions = array_filter($actions, fn (array $row): bool => ($row['contributes_to_program_total'] ?? false) === true);
-            $sum = array_sum(array_map(fn (array $row): int => (int) ($row[$key] ?? 0), $rootActions));
-            if ($total !== null && abs($sum - $total) > 1000) {
-                $differences[$key] = ['actions_sum' => $sum, 'programme_total' => $total, 'difference' => $sum - $total];
+            $values = array_map(fn (array $row): ?string => $row[$key] ?? null, $rootActions);
+            $sum = in_array(null, $values, true) ? null : DecimalMoney::sum(array_filter($values, fn (?string $value): bool => $value !== null));
+            $difference = $total === null || $sum === null ? null : bcsub($sum, $total, 2);
+            if ($total !== null && ($difference === null || DecimalMoney::compare(ltrim($difference, '-'), '1000.00') > 0)) {
+                $differences[$key] = ['actions_sum' => $sum, 'programme_total' => $total, 'difference' => $difference];
             }
         }
 
@@ -257,7 +261,7 @@ class RapTextParser
     }
 
     /** @param array<int, string> $lines */
-    private function totalAfter(array $lines, string $label): ?int
+    private function totalAfter(array $lines, string $label): ?string
     {
         foreach ($lines as $index => $line) {
             if (! str_contains(mb_strtolower($line), mb_strtolower($label))) {
@@ -284,28 +288,22 @@ class RapTextParser
         return null;
     }
 
-    private function amount(string $value): int
+    private function amount(string $value): ?string
     {
-        $value = str_replace([' ', "\u{00A0}", '.'], '', $value);
-
-        return (int) $value;
+        return RapMoney::normalize($value);
     }
 
-    /** @return array<int,int> */
+    /** @return array<int,string|null> */
     private function amountColumns(string $value): array
     {
-        preg_match_all('/[+-]?\d{1,3}(?:[ \x{00a0}]\d{3})+|[+-]?\d+/u', $value, $matches);
+        $columns = preg_split('/\s{2,}/u', trim($value)) ?: [];
 
-        return array_map(fn (string $number): int => $this->amount($number), $matches[0]);
+        return array_map(fn (string $number): ?string => $this->amount($number), $columns);
     }
 
-    /** @param array<int,int> $row */
-    private function rowTotal(array $row): ?int
+    /** @param array<int,string|null> $row */
+    private function rowTotal(array $row): ?string
     {
-        if ($row === []) {
-            return null;
-        }
-
-        return end($row);
+        return $row === [] ? null : end($row);
     }
 }

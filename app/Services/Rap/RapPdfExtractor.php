@@ -12,7 +12,8 @@ class RapPdfExtractor
             throw new RuntimeException("PDF RAP introuvable ou illisible : {$pdfPath}");
         }
 
-        $command = ['pdftotext', '-layout', $pdfPath, '-'];
+        // Fixed pitch preserves column gaps between large amounts (notably P200).
+        $command = ['pdftotext', '-layout', '-fixed', '3', $pdfPath, '-'];
         $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
         if (! is_resource($process)) {
             throw new RuntimeException('Impossible de lancer pdftotext.');

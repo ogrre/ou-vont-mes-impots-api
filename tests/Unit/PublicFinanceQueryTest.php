@@ -115,6 +115,26 @@ class PublicFinanceQueryTest extends TestCase
         ], $invoke('amountBlock', null));
     }
 
+    public function test_it_aggregates_consolidated_cofog_rows_and_removes_zeroes(): void
+    {
+        $query = app(PublicFinanceQuery::class);
+        $invoke = $this->invoker($query);
+        $item = new ClassificationItem(['code' => 'GF10', 'official_label' => 'Protection sociale']);
+        $other = new ClassificationItem(['code' => 'GF07', 'official_label' => 'Santé']);
+        $rows = collect([
+            tap(new FinancialObservation(['amount' => '693000000000.00']), fn ($row) => $row->setRelation('classificationItem', $item)),
+            tap(new FinancialObservation(['amount' => '555700000000.00']), fn ($row) => $row->setRelation('classificationItem', $item)),
+            tap(new FinancialObservation(['amount' => '261200000000.00']), fn ($row) => $row->setRelation('classificationItem', $other)),
+            tap(new FinancialObservation(['amount' => '0.00']), fn ($row) => $row->setRelation('classificationItem', new ClassificationItem(['code' => 'GF02', 'official_label' => 'Défense']))),
+        ]);
+
+        $result = $invoke('aggregateCofogRows', $rows);
+
+        $this->assertCount(2, $result);
+        $this->assertSame(['GF10', 'GF07'], $result->map(fn (FinancialObservation $row): string => $row->classificationItem->code)->all());
+        $this->assertSame('1248700000000.00', $result->first()->amount);
+    }
+
     public function test_it_resolves_explicit_and_implicit_hierarchy_levels(): void
     {
         $query = app(PublicFinanceQuery::class);

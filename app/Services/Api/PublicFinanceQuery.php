@@ -373,10 +373,33 @@ class PublicFinanceQuery
         if ($rows->isEmpty()) {
             return $this->unavailableBlock($year, 'general_government', 'national_accounts', 'expenditure', 'execution', 'COFOG 2024 n’est pas encore importé.');
         }
+        // T_3301 contains one row per institutional sector for each COFOG
+        // function. The public distribution is consolidated, so those rows
+        // must be merged before rendering; otherwise the same function is
+        // displayed several times and its amounts are not comparable.
+        $rows = $this->aggregateCofogRows($rows);
         $total = FinancialObservation::query()->where('year', $year)->where('dataset_id', $rows->first()->dataset_id)->whereHas('classificationItem', fn ($query) => $query->where('code', '_Z'))->first();
         $denominator = $total === null ? DecimalMoney::sum($rows->pluck('amount')) : $total->amount;
 
         return $this->distributionBlock($year, 'general_government', 'national_accounts', 'expenditure', 'execution', 'consolidated', $rows, $denominator);
+    }
+
+    /**
+     * @param  Collection<int, FinancialObservation>  $rows
+     * @return Collection<int, FinancialObservation>
+     */
+    private function aggregateCofogRows(Collection $rows): Collection
+    {
+        return $rows->groupBy(fn (FinancialObservation $row): string => (string) $row->classificationItem->code)
+            ->map(function (Collection $group): FinancialObservation {
+                /** @var FinancialObservation $first */
+                $first = $group->first();
+                $first->amount = DecimalMoney::sum($group->pluck('amount'));
+
+                return $first;
+            })
+            ->filter(fn (FinancialObservation $row): bool => DecimalMoney::compare((string) $row->amount, '0.00') > 0)
+            ->values();
     }
 
     /** @return array<string,mixed> */

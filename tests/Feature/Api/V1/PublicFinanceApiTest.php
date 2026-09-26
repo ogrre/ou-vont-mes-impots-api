@@ -133,7 +133,7 @@ class PublicFinanceApiTest extends TestCase
         app(StateBudgetRevenueCsvImporter::class)->import(DatasetFile::where('slug', 'state-budget-revenue-execution-2024')->firstOrFail(), base_path('data/2024/budget-etat/fiscalite/Annexe1-Etat_Recettes.csv'));
         $this->getJson('/api/v1/overview/2024')->assertOk()
             ->assertJsonPath('functional_distribution.accounting_basis', 'national_accounts')
-            ->assertJsonPath('functional_distribution.items.0.percent', '10.83')
+            ->assertJsonPath('functional_distribution.items.0.percent', '21.66')
             ->assertJsonPath('revenues.public_revenues.accounting_basis', 'national_accounts')
             ->assertJsonPath('revenues.state_budget_revenues.accounting_basis', 'budgetary')
             ->assertJsonPath('revenues.state_budget_revenues.stage', 'execution')

@@ -160,7 +160,7 @@ class ImportRap extends Command
             $this->warn(sprintf('%d programme(s) non importable(s), conservé(s) en revue : %s', count($report['non_importable']), implode(', ', array_column($report['non_importable'], 'program'))));
         }
 
-        $unexpectedErrors = array_filter($report['errors'], fn (array $error): bool => ! $this->isExpectedNonImportable((string) ($error['program'] ?? ''), (string) ($error['error'] ?? '')));
+        $unexpectedErrors = array_filter($report['errors'], fn (array $error): bool => ! $this->isExpectedNonImportable((string) ($error['program'] ?? ''), (string) $error['error']));
 
         return $report['parsed'] === 0 || $unexpectedErrors !== [] ? self::FAILURE : self::SUCCESS;
     }

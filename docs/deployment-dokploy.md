@@ -112,6 +112,38 @@ L’image de production embarque uniquement les six CSV PLRG et le classeur de
 recettes pris en charge. Les sources différées, notamment le PDF, le RAP,
 `donnée.csv` et CCAS/CIAS, restent exclues du contexte de construction Docker.
 
+### RAP 2024
+
+Les PDF RAP et les fichiers générés par leur extraction doivent être placés
+dans un volume persistant monté sur `/var/www/data`. Ils ne doivent pas rester
+uniquement dans le système de fichiers éphémère du conteneur :
+
+```text
+/home/ubuntu/rap-production-data:/var/www/data
+```
+
+Le chemin hôte doit être adapté à l’installation Dokploy et sauvegardé avant
+le premier import. Après déploiement du code du parseur, lancer :
+
+```bash
+php artisan migrate --force
+php artisan db:seed --class=EditorialExplanationSeeder --force
+php artisan optimize:clear
+php artisan cache:clear
+php artisan dataset:import-rap 2024 --parse-only --force
+php artisan cache:clear
+```
+
+La commande peut terminer avec succès tout en listant des programmes
+non importables connus. Ces formats restent dans le rapport et ne produisent
+aucun montant inventé. Un code d’échec indique en revanche une erreur
+inattendue, l’absence de données importées ou un fichier manquant et doit être
+investigué avant de poursuivre.
+
+Contrôler `data/processed/rap/2024/report.json`, puis vérifier qu’aucun montant
+ne vaut `9223372036854775807` et que la distribution budgétaire répond avec un
+denominator cohérent.
+
 La même opération peut être lancée manuellement :
 
 ```bash

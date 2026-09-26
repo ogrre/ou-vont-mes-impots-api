@@ -36,4 +36,14 @@ class RapOverflowTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $method->invoke(new ImportRap, '9223372036854775807.00');
     }
+
+    public function test_expected_non_importable_rap_formats_do_not_fail_the_whole_import(): void
+    {
+        $method = new \ReflectionMethod(ImportRap::class, 'isExpectedNonImportable');
+
+        $this->assertTrue($method->invoke(new ImportRap, '501', 'Section 2024 par action introuvable.'));
+        $this->assertFalse($method->invoke(new ImportRap, '501', 'PDF absent'));
+        $this->assertFalse($method->invoke(new ImportRap, '501', 'Database connection failed'));
+        $this->assertFalse($method->invoke(new ImportRap, '200', 'Section 2024 par action introuvable.'));
+    }
 }

@@ -30,6 +30,9 @@ use Throwable;
 
 class ImportRap extends Command
 {
+    /** @var list<string> */
+    private const EXPECTED_NON_IMPORTABLE_PROGRAMS = ['501', '531', '532', '533', '542'];
+
     protected $signature = 'dataset:import-rap {year} {--download-only} {--parse-only} {--program=} {--catalog=} {--force}';
 
     protected $description = 'Télécharge et importe les RAP depuis la page officielle Budget.gouv';
@@ -104,7 +107,7 @@ class ImportRap extends Command
 
         $source = Source::query()->updateOrCreate(['slug' => 'budget-gouv-plrg-2024'], ['name' => 'PLRG/RAP 2024', 'publisher' => 'Direction du Budget', 'homepage_url' => RapCatalogCrawler::PAGE_URL, 'description' => 'Rapports annuels de performances 2024.', 'is_official' => true]);
         $dataset = Dataset::query()->updateOrCreate(['slug' => 'state-budget-rap-2024'], ['source_id' => $source->id, 'name' => 'Rapports annuels de performances 2024', 'description' => 'Dépenses de l’État par programme, action et sous-action.', 'source_url' => RapCatalogCrawler::PAGE_URL, 'publication_title' => 'PLRG 2024 — RAP', 'publication_date' => '2025-04-16', 'downloaded_at' => now(), 'license_name' => 'Licence ouverte / Etalab', 'year' => 2024, 'accounting_system' => 'budgetary', 'scope' => 'french_state_budget', 'unit' => 'EUR', 'metadata' => ['accounting_scope' => 'french_state_budget', 'reporting_period' => '2024', 'status' => 'executed', 'unit' => 'EUR']]);
-        $report = ['discovered' => $discovered, 'downloaded' => $download['downloaded'], 'failed' => $download['failed'], 'parsed' => 0, 'programmes' => 0, 'actions' => 0, 'sub_actions' => 0, 'errors' => [], 'divergences' => [], 'special_diagnostics' => []];
+        $report = ['discovered' => $discovered, 'downloaded' => $download['downloaded'], 'failed' => $download['failed'], 'parsed' => 0, 'programmes' => 0, 'actions' => 0, 'sub_actions' => 0, 'errors' => [], 'non_importable' => [], 'divergences' => [], 'special_diagnostics' => []];
         $scope = AccountingScope::query()->where('code', 'french_state_budget')->firstOrFail();
         $classification = Classification::query()->firstOrCreate(['code' => 'state_budget_programme_action'], ['name' => 'Budget de l’État — mission, programme, action', 'description' => 'Hiérarchie des RAP du budget de l’État.']);
         $missionMap = $this->missionMap();
@@ -115,7 +118,8 @@ class ImportRap extends Command
             $pdf = $raw.'/P'.$entry['program'].'.pdf';
             $jsonPath = $processed.'/'.$entry['program'].'.json';
             if (! is_file($pdf)) {
-                $report['errors'][] = ['program' => $entry['program'], 'error' => 'PDF absent'];
+                $error = ['program' => $entry['program'], 'error' => 'PDF absent'];
+                $report['errors'][] = $error;
 
                 continue;
             }
@@ -138,7 +142,11 @@ class ImportRap extends Command
                 $report['sub_actions'] += $parsed['counts']['sub_actions'];
             } catch (Throwable $e) {
                 File::put($jsonPath, json_encode(['program' => $entry, 'review_required' => true, 'error' => $e->getMessage()], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-                $report['errors'][] = ['program' => $entry['program'], 'error' => $e->getMessage()];
+                $error = ['program' => $entry['program'], 'error' => $e->getMessage()];
+                $report['errors'][] = $error;
+                if ($this->isExpectedNonImportable($entry['program'], $e->getMessage())) {
+                    $report['non_importable'][] = $error;
+                }
                 if (in_array((string) $entry['program'], ['501', '511', '521', '531', '532', '533', '541', '542'], true)) {
                     $report['special_diagnostics'][] = ['program' => $entry['program'], 'terminology_found' => 'specific institutional format', 'available_amounts' => [], 'proposed_measurement_type' => [], 'importable' => false, 'reason' => $e->getMessage()];
                 }
@@ -148,8 +156,19 @@ class ImportRap extends Command
         $report['divergence_report'] = $processed.'/divergence-report.json';
         File::put($processed.'/report.json', json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
         $this->line(sprintf('RAP 2024 : discovered=%d downloaded=%d failed=%d parsed=%d programmes=%d actions=%d sous-actions=%d', $report['discovered'], $report['downloaded'], count($report['failed']), $report['parsed'], $report['programmes'], $report['actions'], $report['sub_actions']));
+        if ($report['non_importable'] !== []) {
+            $this->warn(sprintf('%d programme(s) non importable(s), conservé(s) en revue : %s', count($report['non_importable']), implode(', ', array_column($report['non_importable'], 'program'))));
+        }
 
-        return $report['errors'] !== [] ? self::FAILURE : self::SUCCESS;
+        $unexpectedErrors = array_filter($report['errors'], fn (array $error): bool => ! $this->isExpectedNonImportable((string) ($error['program'] ?? ''), (string) ($error['error'] ?? '')));
+
+        return $report['parsed'] === 0 || $unexpectedErrors !== [] ? self::FAILURE : self::SUCCESS;
+    }
+
+    private function isExpectedNonImportable(string|int $program, string $error): bool
+    {
+        return in_array((string) $program, self::EXPECTED_NON_IMPORTABLE_PROGRAMS, true)
+            && ! str_contains(mb_strtolower($error), 'pdf absent');
     }
 
     /**

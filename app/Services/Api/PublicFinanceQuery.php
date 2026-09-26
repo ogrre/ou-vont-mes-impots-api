@@ -384,7 +384,10 @@ class PublicFinanceQuery
         return $this->distributionBlock($year, 'general_government', 'national_accounts', 'expenditure', 'execution', 'consolidated', $rows, $denominator);
     }
 
-    /** @param Collection<int, FinancialObservation> $rows */
+    /**
+     * @param Collection<int, FinancialObservation> $rows
+     * @return Collection<int, FinancialObservation>
+     */
     private function aggregateCofogRows(Collection $rows): Collection
     {
         return $rows->groupBy(fn (FinancialObservation $row): string => (string) $row->classificationItem->code)

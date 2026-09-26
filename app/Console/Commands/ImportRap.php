@@ -168,7 +168,7 @@ class ImportRap extends Command
     private function isExpectedNonImportable(string|int $program, string $error): bool
     {
         return in_array((string) $program, self::EXPECTED_NON_IMPORTABLE_PROGRAMS, true)
-            && ! str_contains(mb_strtolower($error), 'pdf absent');
+            && str_contains(mb_strtolower($error), 'section 2024 par action introuvable');
     }
 
     /**

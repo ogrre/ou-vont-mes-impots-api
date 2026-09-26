@@ -43,6 +43,7 @@ class RapOverflowTest extends TestCase
 
         $this->assertTrue($method->invoke(new ImportRap, '501', 'Section 2024 par action introuvable.'));
         $this->assertFalse($method->invoke(new ImportRap, '501', 'PDF absent'));
+        $this->assertFalse($method->invoke(new ImportRap, '501', 'Database connection failed'));
         $this->assertFalse($method->invoke(new ImportRap, '200', 'Section 2024 par action introuvable.'));
     }
 }

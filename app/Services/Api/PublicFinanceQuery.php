@@ -385,7 +385,7 @@ class PublicFinanceQuery
     }
 
     /**
-     * @param Collection<int, FinancialObservation> $rows
+     * @param  Collection<int, FinancialObservation>  $rows
      * @return Collection<int, FinancialObservation>
      */
     private function aggregateCofogRows(Collection $rows): Collection

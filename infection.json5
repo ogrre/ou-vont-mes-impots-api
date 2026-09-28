@@ -12,7 +12,7 @@
         "configDir": "."
     },
     "threads": "max",
-    "timeout": 60,
+    "timeout": 180,
     "minMsi": 70,
     "minCoveredMsi": 70,
     "mutators": {

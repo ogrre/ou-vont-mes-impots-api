@@ -10,6 +10,7 @@ use App\Services\Api\PublicFinanceQuery;
 use App\Services\Imports\InseeCofogXlsxImporter;
 use App\Services\Imports\InseePublicAccountsXlsxImporter;
 use App\Services\Imports\StateBudgetRevenueCsvImporter;
+use App\Support\DecimalMoney;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -138,6 +139,19 @@ class PublicFinanceApiTest extends TestCase
             ->assertJsonPath('revenues.state_budget_revenues.accounting_basis', 'budgetary')
             ->assertJsonPath('revenues.state_budget_revenues.stage', 'execution')
             ->assertJsonPath('revenues.state_budget_revenues.quality.status', 'validated');
+    }
+
+    public function test_cofog_detail_uses_the_consolidated_parent_amount(): void
+    {
+        $this->seed(DatabaseSeeder::class);
+        app(InseeCofogXlsxImporter::class)->import(DatasetFile::where('slug', 'insee-t-3301')->firstOrFail(), base_path('data/2024/insee/T_3301.xlsx'));
+
+        $parent = ClassificationItem::where('code', 'GF10')->firstOrFail();
+        $expected = DecimalMoney::sum(FinancialObservation::query()->where('year', 2024)->where('classification_item_id', $parent->id)->pluck('amount'));
+        $response = $this->getJson('/api/v1/cofog/2024/GF10')->assertOk();
+
+        $this->assertSame($expected, $response->json('amount'));
+        $this->assertSame($expected, $response->json('denominator'));
     }
 
     public function test_state_revenue_csv_preserves_nullable_scope_and_hierarchy_semantics(): void

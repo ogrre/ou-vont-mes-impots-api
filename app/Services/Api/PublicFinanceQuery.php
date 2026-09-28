@@ -275,11 +275,12 @@ class PublicFinanceQuery
             ->whereIn('classification_item_id', $parent->children()->pluck('id'))
             ->with(['classificationItem', 'dataset.source'])
             ->get();
-        $parentObservation = $dataset === null ? null : FinancialObservation::query()
+        $parentObservations = $dataset === null ? collect() : FinancialObservation::query()
             ->where('year', $year)->where('dataset_id', $dataset->id)->where('classification_item_id', $parent->id)
             ->where('accounting_basis', 'national_accounts')->whereHas('importBatch', fn ($query) => $query->where('status', 'completed'))
-            ->with(['dataset.source'])->first();
-        $denominator = $parentObservation !== null ? $parentObservation->amount : DecimalMoney::sum($observations->pluck('amount'));
+            ->with(['dataset.source'])->get();
+        $parentAmount = $parentObservations->isNotEmpty() ? DecimalMoney::sum($parentObservations->pluck('amount')) : null;
+        $denominator = $parentAmount ?? DecimalMoney::sum($observations->pluck('amount'));
         $items = $observations->groupBy('classification_item_id')->map(function (Collection $rows) use ($denominator): array {
             /** @var FinancialObservation $first */
             $first = $rows->first();
@@ -288,7 +289,7 @@ class PublicFinanceQuery
             return ['code' => $first->classificationItem->code, 'label' => $first->classificationItem->official_label, 'description' => $this->cofogDescription($first->classificationItem->code, $first->classificationItem->official_label), 'amount' => $amount, 'percent' => $denominator === '0.00' ? null : bcmul(bcdiv($amount, $denominator, 8), '100', 2), 'quality_status' => 'validated', 'provenance' => $this->overviewProvenance($first)];
         })->sortByDesc(fn (array $item): string => $item['amount'])->values()->all();
 
-        return ['year' => $year, 'code' => $parent->code, 'label' => $parent->official_label, 'description' => $this->cofogDescription($parent->code, $parent->official_label), 'amount' => $parentObservation?->amount, 'denominator' => $denominator, 'items' => $items, 'quality' => ['status' => $parentObservation !== null ? 'validated' : 'not_importable', 'reason' => $parentObservation !== null ? 'Répartition COFOG détaillée disponible.' : 'Aucune observation COFOG détaillée disponible pour cette année.', 'coverage_percent' => $parentObservation !== null ? '100.00' : '0.00'], 'source' => $dataset?->source?->name, 'dataset' => $dataset?->slug, 'accounting_basis' => 'national_accounts', 'scope' => 'general_government', 'measurement_type' => 'expenditure', 'stage' => 'execution', 'consolidation' => 'consolidated'];
+        return ['year' => $year, 'code' => $parent->code, 'label' => $parent->official_label, 'description' => $this->cofogDescription($parent->code, $parent->official_label), 'amount' => $parentAmount, 'denominator' => $denominator, 'items' => $items, 'quality' => ['status' => $parentAmount !== null ? 'validated' : 'not_importable', 'reason' => $parentAmount !== null ? 'Répartition COFOG détaillée disponible.' : 'Aucune observation COFOG détaillée disponible pour cette année.', 'coverage_percent' => $parentAmount !== null ? '100.00' : '0.00'], 'source' => $dataset?->source?->name, 'dataset' => $dataset?->slug, 'accounting_basis' => 'national_accounts', 'scope' => 'general_government', 'measurement_type' => 'expenditure', 'stage' => 'execution', 'consolidation' => 'consolidated'];
     }
 
     private function cofogDescription(?string $code, string $label): string

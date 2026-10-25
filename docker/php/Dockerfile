@@ -14,7 +14,6 @@ RUN apk add --no-cache \
     libwebp-dev \
     postgresql-dev \
     linux-headers \
-    lexbor-dev \
     $PHPIZE_DEPS \
     && docker-php-ext-configure gd \
         --with-freetype \

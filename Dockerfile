@@ -11,10 +11,9 @@ RUN apk add --no-cache \
     && apk add --no-cache --virtual .build-deps \
         $PHPIZE_DEPS \
         libxml2-dev \
-        lexbor-dev \
         libzip-dev \
         postgresql-dev \
-    && docker-php-ext-install -j"$(nproc)" bcmath dom opcache pdo_pgsql xmlreader zip \
+    && docker-php-ext-install -j"$(nproc)" bcmath opcache pdo_pgsql xmlreader zip \
     && apk del .build-deps \
     && rm -rf /var/cache/apk/* /tmp/*
 

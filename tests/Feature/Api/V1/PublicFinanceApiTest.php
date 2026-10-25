@@ -152,6 +152,28 @@ class PublicFinanceApiTest extends TestCase
 
         $this->assertSame($expected, $response->json('amount'));
         $this->assertSame($expected, $response->json('denominator'));
+        $this->assertSame([
+            'year', 'code', 'label', 'description', 'amount', 'denominator', 'items', 'quality',
+            'source', 'dataset', 'accounting_basis', 'scope', 'measurement_type', 'stage', 'consolidation',
+        ], array_keys($response->json()));
+        $this->assertSame(2024, $response->json('year'));
+        $this->assertSame('GF10', $response->json('code'));
+        $this->assertSame('10 - Protection sociale', $response->json('label'));
+        $this->assertStringContainsString('protection sociale', mb_strtolower($response->json('description')));
+        $this->assertSame('validated', $response->json('quality.status'));
+        $this->assertSame('Répartition COFOG détaillée disponible.', $response->json('quality.reason'));
+        $this->assertSame('100.00', $response->json('quality.coverage_percent'));
+        $this->assertSame('INSEE', $response->json('source'));
+        $this->assertSame('insee-t-3301', $response->json('dataset'));
+        $this->assertSame('national_accounts', $response->json('accounting_basis'));
+        $this->assertSame('general_government', $response->json('scope'));
+        $this->assertSame('expenditure', $response->json('measurement_type'));
+        $this->assertSame('execution', $response->json('stage'));
+        $this->assertSame('consolidated', $response->json('consolidation'));
+        $this->assertNotEmpty($response->json('items'));
+        $this->assertSame([
+            'code', 'label', 'description', 'amount', 'percent', 'quality_status', 'provenance',
+        ], array_keys($response->json('items.0')));
     }
 
     public function test_state_revenue_csv_preserves_nullable_scope_and_hierarchy_semantics(): void

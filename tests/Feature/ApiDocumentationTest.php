@@ -18,7 +18,7 @@ class ApiDocumentationTest extends TestCase
         $response = $this->getJson('/docs/api.json')->assertOk();
 
         $response
-            ->assertJsonPath('openapi', '3.1.0')
+            ->assertJsonPath('openapi', '3.1.2')
             ->assertJsonPath('info.version', config('api.version'));
 
         $paths = $response->json('paths');

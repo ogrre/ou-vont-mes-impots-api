@@ -1,4 +1,4 @@
-FROM php:8.4-fpm-alpine AS runtime
+FROM php:8.5.12-fpm-alpine AS runtime
 
 RUN apk add --no-cache \
         curl \
@@ -13,7 +13,7 @@ RUN apk add --no-cache \
         libxml2-dev \
         libzip-dev \
         postgresql-dev \
-    && docker-php-ext-install -j"$(nproc)" bcmath dom opcache pdo_pgsql xmlreader zip \
+    && docker-php-ext-install -j"$(nproc)" bcmath pdo_pgsql zip \
     && apk del .build-deps \
     && rm -rf /var/cache/apk/* /tmp/*
 
